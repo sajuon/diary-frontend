@@ -1,0 +1,442 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
+
+interface ProfileScreenProps {
+  onNavigate: (screen: string, params?: Record<string, unknown>) => void
+  profile: { birth_date?: string } | null
+  dashboardData: { diary_stats: { consecutive_days: number; total_diaries: number } } | null
+  onUpdateProfile: (data: any) => Promise<void>
+}
+
+const elementColors: Record<string, { bg: string; text: string; label: string }> = {
+  fire: { bg: "#F2A8A8", text: "#B85050", label: "화" },
+  water: { bg: "#A8C4D4", text: "#4A7A94", label: "수" },
+  wood: { bg: "#A8BBA5", text: "#4A6E47", label: "목" },
+  metal: { bg: "#D4C4A8", text: "#7A6A40", label: "금" },
+  earth: { bg: "#D4B8A8", text: "#7A5040", label: "토" },
+}
+
+type SettingsItem = {
+  label: string
+  icon: string
+  danger?: boolean
+}
+
+const settingsItems: SettingsItem[] = [
+  { label: "알림 설정", icon: "🔔" },
+  { label: "계정 관리", icon: "👤" },
+  { label: "구독 관리", icon: "💎" },
+  { label: "로그아웃", icon: "🚪", danger: true },
+]
+
+type UserMe = {
+  nickname: string
+  email?: string | null
+  pearls?: number
+  profile_image?: string | null
+}
+
+type ManseData = {
+  pillars: Array<{
+    label: string
+    stem: string
+    branch: string
+    element: "화" | "수" | "목" | "금" | "토" | string
+    tenGod: string
+  }>
+  elementSummary: Record<string, number>
+}
+
+export default function ProfileScreen({
+  onNavigate,
+  profile,
+  dashboardData,
+  onUpdateProfile,
+}: ProfileScreenProps) {
+  const API_BASE_URL = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+    []
+  )
+
+  const [user, setUser] = useState<UserMe | null>(null)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editNickname, setEditNickname] = useState("")
+  const [editProfileImage, setEditProfileImage] = useState("")
+  const [editBirth, setEditBirth] = useState("")
+  const [editBirthTime, setEditBirthTime] = useState("")
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const [showManse, setShowManse] = useState(false)
+  const [manseData, setManseData] = useState<ManseData | null>(null)
+
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null
+
+  // ✅ headers를 항상 Record<string,string>로 고정 (fetch 타입 에러 방지)
+  const authHeaders = useMemo((): Record<string, string> => {
+    const h: Record<string, string> = {}
+    if (token) h.Authorization = `Bearer ${token}`
+    return h
+  }, [token])
+
+  // ✅ /api/users/me 로드
+  useEffect(() => {
+    async function fetchUser() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/users/me`, {
+          headers: authHeaders,
+          credentials: "include",
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as UserMe
+        setUser(data)
+      } catch {
+        // noop
+      }
+    }
+    fetchUser()
+  }, [API_BASE_URL, authHeaders])
+
+  // ✅ 수정 모달 열릴 때 초기값 세팅
+  useEffect(() => {
+    if (user && editOpen) {
+      setEditNickname(user.nickname || "")
+      setEditProfileImage(user.profile_image || "")
+      setEditBirth(profile?.birth_date ? profile.birth_date : "")
+      setEditBirthTime("")
+    }
+  }, [user, editOpen, profile])
+
+  // ✅ 만세력 보기
+  useEffect(() => {
+    async function fetchManse() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/saju/manse`, {
+          headers: authHeaders,
+          credentials: "include",
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as ManseData
+        setManseData(data)
+      } catch {
+        // noop
+      }
+    }
+    if (showManse) fetchManse()
+  }, [showManse, API_BASE_URL, authHeaders])
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setEditLoading(true)
+    setEditError(null)
+
+    try {
+      // 1) 닉네임/프로필 이미지 수정
+      const res1 = await fetch(`${API_BASE_URL}/api/users/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          nickname: editNickname,
+          profile_image: editProfileImage,
+        }),
+        credentials: "include",
+      })
+      if (!res1.ok) throw new Error("닉네임/프로필 수정 실패")
+
+      // 2) 생년월일 수정
+      if (editBirth) {
+        await onUpdateProfile({
+          birth_date: editBirth,
+          birth_time: editBirthTime || null,
+          birth_place: null,
+          sex: null,
+          timezone: "Asia/Seoul",
+        })
+      }
+
+      // 3) me 다시 로드해서 화면 갱신
+      const resMe = await fetch(`${API_BASE_URL}/api/users/me`, {
+        headers: authHeaders,
+        credentials: "include",
+      })
+      if (resMe.ok) {
+        const me = (await resMe.json()) as UserMe
+        setUser(me)
+      }
+
+      setEditOpen(false)
+    } catch (err: any) {
+      setEditError(err?.message || "수정 실패")
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  const streak = dashboardData?.diary_stats?.consecutive_days ?? 0
+  const totalDiaries = dashboardData?.diary_stats?.total_diaries ?? 0
+  const pearls = user?.pearls ?? 0
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto font-sans" style={{ background: "#F8F6F2" }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
+        <button
+          onClick={() => onNavigate("home")}
+          className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
+          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
+          aria-label="뒤로 가기"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D3530" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>마이페이지</h2>
+        <div className="w-9" />
+      </div>
+
+      <div className="px-5 space-y-3 pb-8">
+        {/* 1. Profile Card */}
+        <div
+          className="rounded-3xl p-5"
+          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0" style={{ boxShadow: "0 2px 8px rgba(201,133,106,0.15)" }}>
+              <Image
+                src={
+                  user?.profile_image
+                    ? (user.profile_image.startsWith("/static") ? `${API_BASE_URL}${user.profile_image}` : user.profile_image)
+                    : "/images/haedori-character.jpg"
+                }
+                alt="프로필"
+                width={64}
+                height={64}
+                className="object-cover w-full h-full"
+              />
+            </div>
+
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-extrabold" style={{ color: "#3D3530" }}>
+                  {user?.nickname || "로그인 필요"}
+                </p>
+
+                <button
+                  className="px-2 py-0.5 rounded-full text-xs font-bold border border-[#E5DDD5] bg-[#FFFCF8] text-[#C9856A]"
+                  style={{ minWidth: 40 }}
+                  onClick={() => setEditOpen(true)}
+                >
+                  수정
+                </button>
+
+                {/* 수정 모달 */}
+                {editOpen && (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center"
+                    style={{ background: "rgba(61,53,48,0.4)" }}
+                    onClick={() => setEditOpen(false)}
+                  >
+                    <form
+                      onSubmit={handleEditSubmit}
+                      className="bg-[#FFFCF8] rounded-2xl p-6 w-full max-w-xs shadow-xl flex flex-col gap-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h3 className="text-base font-bold mb-2" style={{ color: "#3D3530" }}>
+                        프로필 수정
+                      </h3>
+
+                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                        닉네임
+                        <input
+                          type="text"
+                          value={editNickname}
+                          onChange={(e) => setEditNickname(e.target.value)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg border border-[#E5DDD5]"
+                          maxLength={50}
+                          required
+                        />
+                      </label>
+
+                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                        프로필 사진 업로드
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="w-full mt-1 px-3 py-2 rounded-lg border border-[#E5DDD5]"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+
+                            const formData = new FormData()
+                            formData.append("file", file)
+
+                            try {
+                              const res = await fetch(`${API_BASE_URL}/api/users/me/profile-image`, {
+                                method: "POST",
+                                headers: authHeaders, // ✅ 타입 OK
+                                body: formData,
+                                credentials: "include",
+                              })
+                              if (!res.ok) throw new Error("이미지 업로드 실패")
+                              const data = await res.json()
+                              setEditProfileImage(data.profile_image)
+                            } catch (err: any) {
+                              setEditError(err?.message || "이미지 업로드 실패")
+                            }
+                          }}
+                        />
+
+                        <input
+                          type="text"
+                          value={editProfileImage}
+                          onChange={(e) => setEditProfileImage(e.target.value)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg border border-[#E5DDD5]"
+                          maxLength={255}
+                          placeholder="직접 URL 입력도 가능"
+                        />
+                      </label>
+
+                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                        생년월일
+                        <input
+                          type="date"
+                          value={editBirth}
+                          onChange={(e) => setEditBirth(e.target.value)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg border border-[#E5DDD5]"
+                        />
+                      </label>
+
+                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                        출생 시간
+                        <input
+                          type="time"
+                          value={editBirthTime}
+                          onChange={(e) => setEditBirthTime(e.target.value)}
+                          className="w-full mt-1 px-3 py-2 rounded-lg border border-[#E5DDD5]"
+                        />
+                      </label>
+
+                      {editError && <div className="text-red-500 text-xs">{editError}</div>}
+
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          type="button"
+                          className="flex-1 py-2 rounded-lg bg-[#EDE8E0] text-[#3D3530] font-bold"
+                          onClick={() => setEditOpen(false)}
+                        >
+                          취소
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-2 rounded-lg bg-[#C9856A] text-[#FFFCF8] font-bold"
+                          disabled={editLoading}
+                        >
+                          {editLoading ? "저장 중..." : "저장"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-sm mt-0.5" style={{ color: "#9A8F87" }}>
+                {user?.email || ""}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. 기록 현황 */}
+        <div
+          className="rounded-3xl p-5"
+          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+        >
+          <p className="text-xs font-bold mb-4" style={{ color: "#9A8F87" }}>
+            기록 현황
+          </p>
+          <div className="flex items-center justify-around mb-4">
+            <div className="text-center">
+              <p className="text-3xl font-extrabold" style={{ color: "#C9856A" }}>
+                {streak}
+              </p>
+              <p className="text-xs font-semibold mt-0.5" style={{ color: "#9A8F87" }}>
+                연속일
+              </p>
+            </div>
+
+            <div className="w-px h-10" style={{ background: "#E5DDD5" }} />
+
+            <div className="text-center">
+              <p className="text-3xl font-extrabold" style={{ color: "#A8BBA5" }}>
+                {totalDiaries}
+              </p>
+              <p className="text-xs font-semibold mt-0.5" style={{ color: "#9A8F87" }}>
+                총 기록
+              </p>
+            </div>
+
+            <div className="w-px h-10" style={{ background: "#E5DDD5" }} />
+
+            <div className="text-center">
+              <p className="text-3xl font-extrabold" style={{ color: "#C9A060" }}>
+                {pearls}
+              </p>
+              <p className="text-xs font-semibold mt-0.5" style={{ color: "#9A8F87" }}>
+                진주
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Settings */}
+        <div
+          className="rounded-3xl overflow-hidden"
+          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}
+        >
+          <p className="text-xs font-bold px-5 pt-4 pb-2" style={{ color: "#9A8F87" }}>
+            설정
+          </p>
+
+          {settingsItems.map((item, idx) => (
+            <div key={item.label}>
+              <button
+                className="w-full flex items-center gap-3 px-5 py-3.5 text-left transition-all active:bg-[#EDE8E0]"
+                onClick={() => {
+                  if (item.label === "로그아웃") {
+                    localStorage.removeItem("access_token")
+                    onNavigate("login")
+                  }
+                }}
+              >
+                <span className="text-base">{item.icon}</span>
+                <span
+                  className="flex-1 text-sm font-semibold"
+                  style={{ color: item.danger ? "#C95050" : "#3D3530" }}
+                >
+                  {item.label}
+                </span>
+
+                {!item.danger && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C4B8B0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                )}
+              </button>
+
+              {idx < settingsItems.length - 1 && (
+                <div className="mx-5" style={{ height: "1px", background: "#F0EAE3" }} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

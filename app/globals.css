@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Haedori Diary App - Warm Cozy Pastel Theme */
+  --background: #F8F6F2;
+  --foreground: #3D3530;
+  --card: #FFFCF8;
+  --card-foreground: #3D3530;
+  --popover: #FFFCF8;
+  --popover-foreground: #3D3530;
+  --primary: #C9856A;
+  --primary-foreground: #FFFCF8;
+  --secondary: #EDE8E0;
+  --secondary-foreground: #3D3530;
+  --muted: #EDE8E0;
+  --muted-foreground: #9A8F87;
+  --accent: #F4C97A;
+  --accent-foreground: #3D3530;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: #E5DDD5;
+  --input: #EDE8E0;
+  --ring: #C9856A;
+  --radius: 1rem;
+  /* Custom app tokens */
+  --warm-beige: #F8F6F2;
+  --soft-sage: #A8BBA5;
+  --pastel-peach: #F2C4A8;
+  --pastel-mint: #B8D8C8;
+  --pastel-pink: #F0C4C4;
+  --kakao-yellow: #F4C97A;
+  --pearl: #D4AF8A;
+  --sidebar: #FFFCF8;
+  --sidebar-foreground: #3D3530;
+  --sidebar-primary: #C9856A;
+  --sidebar-primary-foreground: #FFFCF8;
+  --sidebar-accent: #EDE8E0;
+  --sidebar-accent-foreground: #3D3530;
+  --sidebar-border: #E5DDD5;
+  --sidebar-ring: #C9856A;
+}
+
+.dark {
+  --background: #2A2420;
+  --foreground: #F8F6F2;
+  --card: #332C28;
+  --card-foreground: #F8F6F2;
+  --popover: #332C28;
+  --popover-foreground: #F8F6F2;
+  --primary: #C9856A;
+  --primary-foreground: #F8F6F2;
+  --secondary: #3D3530;
+  --secondary-foreground: #F8F6F2;
+  --muted: #3D3530;
+  --muted-foreground: #9A8F87;
+  --accent: #F4C97A;
+  --accent-foreground: #2A2420;
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: #4A3F3A;
+  --input: #3D3530;
+  --ring: #C9856A;
+  --sidebar: #332C28;
+  --sidebar-foreground: #F8F6F2;
+  --sidebar-primary: #C9856A;
+  --sidebar-primary-foreground: #F8F6F2;
+  --sidebar-accent: #3D3530;
+  --sidebar-accent-foreground: #F8F6F2;
+  --sidebar-border: #4A3F3A;
+  --sidebar-ring: #C9856A;
+}
+
+@theme inline {
+  --font-sans: 'Nunito', 'Nunito Fallback', sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
