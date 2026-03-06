@@ -8,10 +8,6 @@ class ApiClient {
     this.baseURL = baseURL
   }
 
-  /**
-   * 🔥 매 요청마다 최신 토큰을 가져오도록 수정
-   * (기존에는 constructor에서 한 번만 읽어서 로그인 이후에도 null일 수 있었음)
-   */
   private getToken(): string | null {
     if (typeof window === "undefined") return null
     return localStorage.getItem("access_token")
@@ -36,10 +32,9 @@ class ApiClient {
     const response = await fetch(url, {
       ...options,
       headers,
-      credentials: "include", // 혹시 쿠키 인증도 대비
+      credentials: "include",
     })
 
-    // 🔥 401 처리 (토큰 만료 대응)
     if (response.status === 401) {
       if (typeof window !== "undefined") {
         localStorage.removeItem("access_token")
@@ -55,13 +50,12 @@ class ApiClient {
         const error = await response.json()
         errorMessage = error.detail || errorMessage
       } catch {
-        // JSON 아닐 경우 무시
+        // JSON이 아니면 기본 메시지 유지
       }
 
       throw new Error(errorMessage)
     }
 
-    // JSON 없는 응답 대비
     const contentType = response.headers.get("content-type")
     if (contentType && contentType.includes("application/json")) {
       return response.json()
@@ -169,6 +163,12 @@ class ApiClient {
     return this.request(`/api/letters/${letterId}`)
   }
 
+  async markLetterAsRead(letterId: number) {
+    return this.request(`/api/letters/${letterId}/read`, {
+      method: "PATCH",
+    })
+  }
+
   async generateTodayLetter() {
     return this.request("/api/letters/generate/today", {
       method: "POST",
@@ -215,6 +215,38 @@ class ApiClient {
   async updateNotificationSettings(data: any) {
     return this.request("/api/settings/notifications", {
       method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // ======================
+  // Web Push
+  // ======================
+
+  async getWebPushPublicKey() {
+    return this.request<{ public_key: string }>("/api/web-push/public-key")
+  }
+
+  async subscribeWebPush(data: {
+    subscription: PushSubscriptionJSON
+    user_agent?: string
+  }) {
+    return this.request("/api/web-push/subscribe", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async unsubscribeWebPush(data: { endpoint: string }) {
+    return this.request("/api/web-push/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async sendWebPushTest(data: { title: string; body: string; url: string }) {
+    return this.request("/api/web-push/test", {
+      method: "POST",
       body: JSON.stringify(data),
     })
   }

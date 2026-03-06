@@ -6,11 +6,20 @@ import Image from "next/image"
 interface ProfileScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
   profile: { birth_date?: string } | null
-  dashboardData: { diary_stats: { consecutive_days: number; total_diaries: number } } | null
+  dashboardData: {
+    diary_stats: {
+      consecutive_days: number
+      total_diaries: number
+      has_today?: boolean
+    }
+  } | null
   onUpdateProfile: (data: any) => Promise<void>
 }
 
-const elementColors: Record<string, { bg: string; text: string; label: string }> = {
+const elementColors: Record<
+  string,
+  { bg: string; text: string; label: string }
+> = {
   fire: { bg: "#F2A8A8", text: "#B85050", label: "화" },
   water: { bg: "#A8C4D4", text: "#4A7A94", label: "수" },
   wood: { bg: "#A8BBA5", text: "#4A6E47", label: "목" },
@@ -60,6 +69,17 @@ export default function ProfileScreen({
     []
   )
 
+  const token = useMemo(() => {
+    if (typeof window === "undefined") return null
+    return localStorage.getItem("access_token")
+  }, [])
+
+  const authHeaders = useMemo((): Record<string, string> => {
+    const h: Record<string, string> = {}
+    if (token) h.Authorization = `Bearer ${token}`
+    return h
+  }, [token])
+
   const [user, setUser] = useState<UserMe | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
@@ -73,17 +93,6 @@ export default function ProfileScreen({
   const [showManse, setShowManse] = useState(false)
   const [manseData, setManseData] = useState<ManseData | null>(null)
 
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("access_token") : null
-
-  // ✅ headers를 항상 Record<string,string>로 고정 (fetch 타입 에러 방지)
-  const authHeaders = useMemo((): Record<string, string> => {
-    const h: Record<string, string> = {}
-    if (token) h.Authorization = `Bearer ${token}`
-    return h
-  }, [token])
-
-  // ✅ /api/users/me 로드
   useEffect(() => {
     async function fetchUser() {
       try {
@@ -98,10 +107,10 @@ export default function ProfileScreen({
         // noop
       }
     }
+
     fetchUser()
   }, [API_BASE_URL, authHeaders])
 
-  // ✅ 수정 모달 열릴 때 초기값 세팅
   useEffect(() => {
     if (user && editOpen) {
       setEditNickname(user.nickname || "")
@@ -111,7 +120,6 @@ export default function ProfileScreen({
     }
   }, [user, editOpen, profile])
 
-  // ✅ 만세력 보기
   useEffect(() => {
     async function fetchManse() {
       try {
@@ -126,6 +134,7 @@ export default function ProfileScreen({
         // noop
       }
     }
+
     if (showManse) fetchManse()
   }, [showManse, API_BASE_URL, authHeaders])
 
@@ -135,7 +144,6 @@ export default function ProfileScreen({
     setEditError(null)
 
     try {
-      // 1) 닉네임/프로필 이미지 수정
       const res1 = await fetch(`${API_BASE_URL}/api/users/me`, {
         method: "PUT",
         headers: {
@@ -148,9 +156,9 @@ export default function ProfileScreen({
         }),
         credentials: "include",
       })
+
       if (!res1.ok) throw new Error("닉네임/프로필 수정 실패")
 
-      // 2) 생년월일 수정
       if (editBirth) {
         await onUpdateProfile({
           birth_date: editBirth,
@@ -161,11 +169,11 @@ export default function ProfileScreen({
         })
       }
 
-      // 3) me 다시 로드해서 화면 갱신
       const resMe = await fetch(`${API_BASE_URL}/api/users/me`, {
         headers: authHeaders,
         credentials: "include",
       })
+
       if (resMe.ok) {
         const me = (await resMe.json()) as UserMe
         setUser(me)
@@ -179,13 +187,37 @@ export default function ProfileScreen({
     }
   }
 
+  const handleSettingsClick = (label: string) => {
+    if (label === "알림 설정") {
+      onNavigate("notification-settings")
+      return
+    }
+
+    if (label === "계정 관리") {
+      onNavigate("account-management")
+      return
+    }
+
+    if (label === "구독 관리") {
+      onNavigate("subscription")
+      return
+    }
+
+    if (label === "로그아웃") {
+      localStorage.removeItem("access_token")
+      onNavigate("login")
+    }
+  }
+
   const streak = dashboardData?.diary_stats?.consecutive_days ?? 0
   const totalDiaries = dashboardData?.diary_stats?.total_diaries ?? 0
   const pearls = user?.pearls ?? 0
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto font-sans" style={{ background: "#F8F6F2" }}>
-      {/* Header */}
+    <div
+      className="flex flex-col h-full overflow-y-auto font-sans"
+      style={{ background: "#F8F6F2" }}
+    >
       <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
         <button
           onClick={() => onNavigate("home")}
@@ -193,26 +225,49 @@ export default function ProfileScreen({
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="뒤로 가기"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D3530" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#3D3530"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>마이페이지</h2>
+        <h2
+          className="text-base font-extrabold"
+          style={{ color: "#3D3530" }}
+        >
+          마이페이지
+        </h2>
         <div className="w-9" />
       </div>
 
       <div className="px-5 space-y-3 pb-8">
-        {/* 1. Profile Card */}
         <div
           className="rounded-3xl p-5"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+          }}
         >
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0" style={{ boxShadow: "0 2px 8px rgba(201,133,106,0.15)" }}>
+            <div
+              className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0"
+              style={{ boxShadow: "0 2px 8px rgba(201,133,106,0.15)" }}
+            >
               <Image
                 src={
                   user?.profile_image
-                    ? (user.profile_image.startsWith("/static") ? `${API_BASE_URL}${user.profile_image}` : user.profile_image)
+                    ? user.profile_image.startsWith("/static")
+                      ? `${API_BASE_URL}${user.profile_image}`
+                      : user.profile_image
                     : "/images/haedori-character.jpg"
                 }
                 alt="프로필"
@@ -224,7 +279,10 @@ export default function ProfileScreen({
 
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <p className="text-lg font-extrabold" style={{ color: "#3D3530" }}>
+                <p
+                  className="text-lg font-extrabold"
+                  style={{ color: "#3D3530" }}
+                >
                   {user?.nickname || "로그인 필요"}
                 </p>
 
@@ -236,7 +294,6 @@ export default function ProfileScreen({
                   수정
                 </button>
 
-                {/* 수정 모달 */}
                 {editOpen && (
                   <div
                     className="fixed inset-0 z-50 flex items-center justify-center"
@@ -248,11 +305,17 @@ export default function ProfileScreen({
                       className="bg-[#FFFCF8] rounded-2xl p-6 w-full max-w-xs shadow-xl flex flex-col gap-4"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <h3 className="text-base font-bold mb-2" style={{ color: "#3D3530" }}>
+                      <h3
+                        className="text-base font-bold mb-2"
+                        style={{ color: "#3D3530" }}
+                      >
                         프로필 수정
                       </h3>
 
-                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                      <label
+                        className="text-xs font-semibold"
+                        style={{ color: "#9A8F87" }}
+                      >
                         닉네임
                         <input
                           type="text"
@@ -264,7 +327,10 @@ export default function ProfileScreen({
                         />
                       </label>
 
-                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                      <label
+                        className="text-xs font-semibold"
+                        style={{ color: "#9A8F87" }}
+                      >
                         프로필 사진 업로드
                         <input
                           type="file"
@@ -278,17 +344,22 @@ export default function ProfileScreen({
                             formData.append("file", file)
 
                             try {
-                              const res = await fetch(`${API_BASE_URL}/api/users/me/profile-image`, {
-                                method: "POST",
-                                headers: authHeaders, // ✅ 타입 OK
-                                body: formData,
-                                credentials: "include",
-                              })
+                              const res = await fetch(
+                                `${API_BASE_URL}/api/users/me/profile-image`,
+                                {
+                                  method: "POST",
+                                  headers: authHeaders,
+                                  body: formData,
+                                  credentials: "include",
+                                }
+                              )
                               if (!res.ok) throw new Error("이미지 업로드 실패")
                               const data = await res.json()
                               setEditProfileImage(data.profile_image)
                             } catch (err: any) {
-                              setEditError(err?.message || "이미지 업로드 실패")
+                              setEditError(
+                                err?.message || "이미지 업로드 실패"
+                              )
                             }
                           }}
                         />
@@ -303,7 +374,10 @@ export default function ProfileScreen({
                         />
                       </label>
 
-                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                      <label
+                        className="text-xs font-semibold"
+                        style={{ color: "#9A8F87" }}
+                      >
                         생년월일
                         <input
                           type="date"
@@ -313,7 +387,10 @@ export default function ProfileScreen({
                         />
                       </label>
 
-                      <label className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                      <label
+                        className="text-xs font-semibold"
+                        style={{ color: "#9A8F87" }}
+                      >
                         출생 시간
                         <input
                           type="time"
@@ -323,7 +400,9 @@ export default function ProfileScreen({
                         />
                       </label>
 
-                      {editError && <div className="text-red-500 text-xs">{editError}</div>}
+                      {editError && (
+                        <div className="text-red-500 text-xs">{editError}</div>
+                      )}
 
                       <div className="flex gap-2 mt-2">
                         <button
@@ -353,20 +432,29 @@ export default function ProfileScreen({
           </div>
         </div>
 
-        {/* 2. 기록 현황 */}
         <div
           className="rounded-3xl p-5"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+          }}
         >
           <p className="text-xs font-bold mb-4" style={{ color: "#9A8F87" }}>
             기록 현황
           </p>
           <div className="flex items-center justify-around mb-4">
             <div className="text-center">
-              <p className="text-3xl font-extrabold" style={{ color: "#C9856A" }}>
+              <p
+                className="text-3xl font-extrabold"
+                style={{ color: "#C9856A" }}
+              >
                 {streak}
               </p>
-              <p className="text-xs font-semibold mt-0.5" style={{ color: "#9A8F87" }}>
+              <p
+                className="text-xs font-semibold mt-0.5"
+                style={{ color: "#9A8F87" }}
+              >
                 연속일
               </p>
             </div>
@@ -374,10 +462,16 @@ export default function ProfileScreen({
             <div className="w-px h-10" style={{ background: "#E5DDD5" }} />
 
             <div className="text-center">
-              <p className="text-3xl font-extrabold" style={{ color: "#A8BBA5" }}>
+              <p
+                className="text-3xl font-extrabold"
+                style={{ color: "#A8BBA5" }}
+              >
                 {totalDiaries}
               </p>
-              <p className="text-xs font-semibold mt-0.5" style={{ color: "#9A8F87" }}>
+              <p
+                className="text-xs font-semibold mt-0.5"
+                style={{ color: "#9A8F87" }}
+              >
                 총 기록
               </p>
             </div>
@@ -385,20 +479,29 @@ export default function ProfileScreen({
             <div className="w-px h-10" style={{ background: "#E5DDD5" }} />
 
             <div className="text-center">
-              <p className="text-3xl font-extrabold" style={{ color: "#C9A060" }}>
+              <p
+                className="text-3xl font-extrabold"
+                style={{ color: "#C9A060" }}
+              >
                 {pearls}
               </p>
-              <p className="text-xs font-semibold mt-0.5" style={{ color: "#9A8F87" }}>
+              <p
+                className="text-xs font-semibold mt-0.5"
+                style={{ color: "#9A8F87" }}
+              >
                 진주
               </p>
             </div>
           </div>
         </div>
 
-        {/* 5. Settings */}
         <div
           className="rounded-3xl overflow-hidden"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+          }}
         >
           <p className="text-xs font-bold px-5 pt-4 pb-2" style={{ color: "#9A8F87" }}>
             설정
@@ -408,12 +511,7 @@ export default function ProfileScreen({
             <div key={item.label}>
               <button
                 className="w-full flex items-center gap-3 px-5 py-3.5 text-left transition-all active:bg-[#EDE8E0]"
-                onClick={() => {
-                  if (item.label === "로그아웃") {
-                    localStorage.removeItem("access_token")
-                    onNavigate("login")
-                  }
-                }}
+                onClick={() => handleSettingsClick(item.label)}
               >
                 <span className="text-base">{item.icon}</span>
                 <span
@@ -424,14 +522,27 @@ export default function ProfileScreen({
                 </span>
 
                 {!item.danger && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C4B8B0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#C4B8B0"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M9 18l6-6-6-6" />
                   </svg>
                 )}
               </button>
 
               {idx < settingsItems.length - 1 && (
-                <div className="mx-5" style={{ height: "1px", background: "#F0EAE3" }} />
+                <div
+                  className="mx-5"
+                  style={{ height: "1px", background: "#F0EAE3" }}
+                />
               )}
             </div>
           ))}

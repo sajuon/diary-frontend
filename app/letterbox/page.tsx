@@ -1,55 +1,59 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useCallback, useState } from "react"
 import LetterboxScreen from "@/components/letterbox-screen"
 import { apiClient } from "@/lib/api"
 
+interface LetterApiResponse {
+  id: number
+  user_id: number
+  diary_entry_id: number
+  letter_date: string
+  content: string
+  element_hint?: Record<string, unknown> | null
+  model?: string | null
+  is_read: boolean
+  read_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export default function LetterboxPage() {
   const router = useRouter()
-  const [letters, setLetters] = useState([])
+  const [letters, setLetters] = useState<LetterApiResponse[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const loadLetters = async () => {
-      try {
-        const currentDate = new Date()
-        const month = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`
-        const data = await apiClient.getLetters(month)
-        setLetters(data)
-      } catch (error) {
-        console.error('Failed to load letters:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const loadLetters = useCallback(async () => {
+    try {
+      const currentDate = new Date()
+      const month = `${currentDate.getFullYear()}-${String(
+        currentDate.getMonth() + 1
+      ).padStart(2, "0")}`
 
-    loadLetters()
+      const data = await apiClient.getLetters(month)
+      setLetters(data as LetterApiResponse[])
+    } catch (error) {
+      console.error("Failed to load letters:", error)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    loadLetters()
+  }, [loadLetters])
 
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
     } else if (screen === "letter-detail" && params?.letter) {
-      // Assuming letter has an id
-      const letterId = (params.letter as any).id || params.letter
+      const letterValue = params.letter as { id?: number } | number
+      const letterId =
+        typeof letterValue === "object" ? letterValue.id : letterValue
       router.push(`/letter-detail/${letterId}`)
     } else {
       router.push(`/${screen}`)
-    }
-  }
-
-  const handleGenerateLetter = async () => {
-    try {
-      const newLetter = await apiClient.generateTodayLetter()
-      // 목록 새로고침
-      const currentDate = new Date()
-      const month = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`
-      const updatedData = await apiClient.getLetters(month)
-      setLetters(updatedData)
-    } catch (error) {
-      console.error('Failed to generate letter:', error)
-      alert('편지 생성에 실패했습니다.')
     }
   }
 
@@ -64,5 +68,5 @@ export default function LetterboxPage() {
     )
   }
 
-  return <LetterboxScreen onNavigate={navigate} letters={letters} onGenerateLetter={handleGenerateLetter} />
+  return <LetterboxScreen onNavigate={navigate} letters={letters} />
 }
