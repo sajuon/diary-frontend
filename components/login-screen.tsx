@@ -1,7 +1,8 @@
 "use client"
 
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { apiClient } from "@/lib/api"
 
 interface LoginScreenProps {
   onNavigate: (screen: string) => void
@@ -9,86 +10,154 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onNavigate }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState<string | null>(null)
+  const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null)
+  const popupRef = useRef<Window | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (messageHandlerRef.current) {
+        window.removeEventListener("message", messageHandlerRef.current)
+      }
+      popupRef.current?.close()
+    }
+  }, [])
+
+  const cleanupMessageHandler = () => {
+    if (messageHandlerRef.current) {
+      window.removeEventListener("message", messageHandlerRef.current)
+      messageHandlerRef.current = null
+    }
+    popupRef.current?.close()
+    popupRef.current = null
+  }
 
   const handleOAuthLogin = async (provider: "kakao" | "google") => {
+    if (isLoading) return
+
     setIsLoading(provider)
+
     try {
-      // OAuth URL 생성
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-      const redirectUri = `${window.location.origin}/auth/callback/${provider}`
-      
+      const frontendBaseUrl = "https://haedori.ludo-lab.com"
+      const redirectUri = `${frontendBaseUrl}/auth/callback/${provider}`
+
       let authUrl = ""
+
       if (provider === "kakao") {
         const clientId = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID
-        authUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`
-      } else if (provider === "google") {
+        authUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+          redirectUri
+        )}&response_type=code`
+      } else {
         const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-          authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile`
+        authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+          redirectUri
+        )}&response_type=code&scope=openid%20email%20profile`
       }
 
-      // 팝업 창 열기
+      if (messageHandlerRef.current) {
+        window.removeEventListener("message", messageHandlerRef.current)
+        messageHandlerRef.current = null
+      }
+
       const popup = window.open(
         authUrl,
         `${provider}Login`,
-        "width=500,height=600,scrollbars=yes,resizable=yes"
+        "width=500,height=700,scrollbars=yes,resizable=yes"
       )
 
-      // 팝업에서 메시지 수신 대기
-      const handleMessage = async (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return
-        
-        if (event.data.type === `${provider}LoginSuccess`) {
-          const { code } = event.data
-          
-          // 백엔드로 코드 전송하여 토큰 교환
-          const response = await fetch(`${baseUrl}/api/auth/oauth/exchange`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              provider,
-              code,
-              redirect_uri: redirectUri,
-            }),
-          })
-
-          if (response.ok) {
-            const data = await response.json()
-            // 토큰 저장 (localStorage 등)
-            localStorage.setItem("access_token", data.access_token)
-            // 홈으로 이동
-            window.location.href = "/home"
-          } else {
-            alert("로그인에 실패했습니다.")
-          }
-        }
-        
-        window.removeEventListener("message", handleMessage)
-        popup?.close()
+      if (!popup) {
+        alert("팝업이 차단되었어. 팝업 허용 후 다시 시도해줘.")
+        setIsLoading(null)
+        return
       }
 
+      popupRef.current = popup
+
+      const handleMessage = async (event: MessageEvent) => {
+        if (event.origin !== frontendBaseUrl) return
+        if (!event.data || typeof event.data !== "object") return
+
+        const expectedSuccessType = `${provider}LoginSuccess`
+        const expectedErrorType = `${provider}LoginError`
+        const messageType = event.data.type
+
+        if (messageType !== expectedSuccessType && messageType !== expectedErrorType) {
+          return
+        }
+
+        try {
+          if (messageType === expectedErrorType) {
+            const errorMessage =
+              typeof event.data.error === "string"
+                ? event.data.error
+                : "소셜 로그인에 실패했습니다."
+            alert(errorMessage)
+            return
+          }
+
+          const code =
+            typeof event.data.code === "string" ? event.data.code : null
+
+          if (!code) {
+            alert("인가 코드를 받지 못했어.")
+            return
+          }
+
+          const oauthResult = await apiClient.oauthLogin(
+            provider,
+            code,
+            redirectUri
+          )
+
+          if (!oauthResult?.access_token) {
+            alert("로그인 토큰을 받지 못했어.")
+            return
+          }
+
+          localStorage.setItem("access_token", oauthResult.access_token)
+
+          // ✅ 토큰 저장 후 바로 홈으로 가지 말고 인증 확인
+          await apiClient.getMe()
+
+          window.location.replace("/home")
+        } catch (error: any) {
+          console.error("OAuth exchange error:", error)
+
+          localStorage.removeItem("access_token")
+
+          const message =
+            typeof error?.message === "string"
+              ? error.message
+              : "로그인 처리 중 오류가 발생했어."
+
+          alert(message)
+        } finally {
+          cleanupMessageHandler()
+          setIsLoading(null)
+        }
+      }
+
+      messageHandlerRef.current = handleMessage
       window.addEventListener("message", handleMessage)
     } catch (error) {
       console.error("OAuth login error:", error)
-      alert("로그인 중 오류가 발생했습니다.")
-    } finally {
+      cleanupMessageHandler()
       setIsLoading(null)
+      alert("로그인 중 오류가 발생했습니다.")
     }
   }
+
   return (
     <div
       className="flex flex-col items-center justify-between h-full px-6 pt-16 pb-10"
       style={{ background: "#F8F6F2" }}
     >
-      {/* Decorative dots */}
       <div className="flex items-center gap-1.5">
         <div className="w-2 h-2 rounded-full" style={{ background: "#F2C4A8" }} />
         <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#F4C97A" }} />
         <div className="w-2 h-2 rounded-full" style={{ background: "#B8D8C8" }} />
       </div>
 
-      {/* Illustration + headline */}
       <div className="flex flex-col items-center flex-1 justify-center gap-7 w-full">
         <div
           className="relative w-60 h-60 rounded-3xl overflow-hidden"
@@ -130,12 +199,10 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
         </div>
       </div>
 
-      {/* Buttons */}
       <div className="w-full space-y-3">
-        {/* Kakao */}
         <button
           onClick={() => handleOAuthLogin("kakao")}
-          disabled={isLoading === "kakao"}
+          disabled={isLoading !== null}
           className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-[0.95rem] transition-all active:scale-[0.97] disabled:opacity-50"
           style={{
             background: "#F4C97A",
@@ -149,10 +216,9 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
           {isLoading === "kakao" ? "로그인 중..." : "카카오로 시작하기"}
         </button>
 
-        {/* Google */}
         <button
           onClick={() => handleOAuthLogin("google")}
-          disabled={isLoading === "google"}
+          disabled={isLoading !== null}
           className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-[0.95rem] transition-all active:scale-[0.97] disabled:opacity-50"
           style={{
             background: "#FFFCF8",
@@ -170,7 +236,6 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
           {isLoading === "google" ? "로그인 중..." : "구글로 시작하기"}
         </button>
 
-        {/* Email */}
         <button
           onClick={() => onNavigate("home")}
           className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-[0.95rem] transition-all active:scale-[0.97]"

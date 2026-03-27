@@ -7,7 +7,7 @@ export default function App() {
   const router = useRouter()
 
   useEffect(() => {
-    router.push("/login")
+    router.replace("/login")
   }, [router])
 
   return null

@@ -1,19 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
-
-interface DiaryDetailScreenProps {
-  onNavigate: (screen: string, params?: Record<string, unknown>) => void
-  date?: string
-  onUpdateDiary: (data: { content: string; mood_tags: string[] }) => Promise<void>
-  onDeleteDiary: () => Promise<void>
-}
+import { useMemo, useState } from "react"
 
 interface DiaryEntryResponse {
-  id?: number
+  id: number
+  user_id: number
   entry_date: string
   content: string
   mood_tags?: string[]
+  created_at: string
+  updated_at: string
 }
 
 interface LetterResponse {
@@ -24,98 +20,84 @@ interface LetterResponse {
   content: string
   element_hint?: Record<string, unknown> | null
   model?: string | null
+  is_read?: boolean
+  read_at?: string | null
   created_at: string
   updated_at: string
+}
+
+interface DiaryDetailScreenProps {
+  onNavigate: (screen: string, params?: Record<string, unknown>) => void
+  date?: string
+  diary: DiaryEntryResponse
+  letter?: LetterResponse | null
+  onUpdateDiary: (data: { content: string; mood_tags: string[] }) => Promise<void>
+  onDeleteDiary: () => Promise<void>
+}
+
+const moodMeta: Record<
+  string,
+  {
+    label: string
+    color: string
+    icon: string
+  }
+> = {
+  happy: {
+    label: "happy",
+    color: "#F4C97A",
+    icon: "😊",
+  },
+  calm: {
+    label: "calm",
+    color: "#A8BBA5",
+    icon: "😌",
+  },
+  sad: {
+    label: "sad",
+    color: "#A8C4D4",
+    icon: "😢",
+  },
+  angry: {
+    label: "angry",
+    color: "#F2A8A8",
+    icon: "😤",
+  },
+  tired: {
+    label: "tired",
+    color: "#C4B8C4",
+    icon: "😪",
+  },
+  excited: {
+    label: "excited",
+    color: "#F2C4A8",
+    icon: "🥰",
+  },
+}
+
+const defaultMoodMeta = {
+  label: "calm",
+  color: "#A8BBA5",
+  icon: "😌",
 }
 
 export default function DiaryDetailScreen({
   onNavigate,
   date,
+  diary,
+  letter,
   onUpdateDiary,
   onDeleteDiary,
 }: DiaryDetailScreenProps) {
   const [starred, setStarred] = useState(false)
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
-  const [entry, setEntry] = useState<DiaryEntryResponse | null>(null)
-  const [letterContent, setLetterContent] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function fetchDiaryAndLetter() {
-      if (!date) {
-        setError("날짜 정보가 없습니다.")
-        return
-      }
+  const moodId = diary.mood_tags?.[0] || "calm"
+  const currentMood = useMemo(() => {
+    return moodMeta[moodId] || defaultMoodMeta
+  }, [moodId])
 
-      setLoading(true)
-      setError(null)
-
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("access_token")
-            : null
-
-        const headers: Record<string, string> = {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        }
-
-        const diaryRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/diary/date/${date}`,
-          {
-            headers,
-            credentials: "include",
-          }
-        )
-
-        if (!diaryRes.ok) {
-          throw new Error("일기 불러오기 실패")
-        }
-
-        const diaryData: DiaryEntryResponse = await diaryRes.json()
-        setEntry(diaryData)
-
-        const month = String(date).slice(0, 7)
-
-        const letterRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/letters?month=${month}`,
-          {
-            headers,
-            credentials: "include",
-          }
-        )
-
-        if (!letterRes.ok) {
-          throw new Error("편지 불러오기 실패")
-        }
-
-        const letters: LetterResponse[] = await letterRes.json()
-
-        const matchedLetter = letters.find(
-          (letter) => letter.letter_date === diaryData.entry_date
-        )
-
-        setLetterContent(matchedLetter?.content ?? "")
-      } catch (e: any) {
-        setError(e.message ?? "데이터를 불러오는 중 오류가 발생했습니다.")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchDiaryAndLetter()
-  }, [date])
-
-  if (loading) {
-    return <div className="p-8 text-center text-sm">불러오는 중...</div>
-  }
-
-  if (error) {
-    return <div className="p-8 text-center text-red-500">{error}</div>
-  }
-
-  if (!entry) {
+  if (!diary) {
     return <div className="p-8 text-center text-sm">일기 데이터 없음</div>
   }
 
@@ -151,18 +133,18 @@ export default function DiaryDetailScreen({
 
         <div className="text-center">
           <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
-            {entry.entry_date}의 일기
+            {diary.entry_date}의 일기
           </h2>
           <div className="flex items-center justify-center gap-1.5 mt-0.5">
             <span className="text-xs" aria-hidden="true">
-              ☀️
+              {currentMood.icon}
             </span>
             <div
               className="w-2.5 h-2.5 rounded-full"
-              style={{ background: "#F4C97A" }}
+              style={{ background: currentMood.color }}
             />
             <span className="text-xs" style={{ color: "#9A8F87" }}>
-              {entry.mood_tags?.[0] ?? ""}
+              {currentMood.label}
             </span>
           </div>
         </div>
@@ -187,7 +169,7 @@ export default function DiaryDetailScreen({
               className="text-sm whitespace-pre-line"
               style={{ color: "#3D3530", lineHeight: "1.85" }}
             >
-              {entry.content}
+              {diary.content}
             </p>
           </div>
         </div>
@@ -213,7 +195,7 @@ export default function DiaryDetailScreen({
               className="text-sm whitespace-pre-line"
               style={{ color: "#3D3530", lineHeight: "1.9" }}
             >
-              {letterContent || "아직 해도리 피드백이 없어요."}
+              {letter?.content || "아직 해도리 피드백이 없어요."}
             </p>
           </div>
         </div>
@@ -275,7 +257,10 @@ export default function DiaryDetailScreen({
 
           <div style={{ height: "1px", background: "#F0EAE4" }} className="mb-4" />
 
-          <p className="text-xs font-semibold mb-3 text-center" style={{ color: "#9A8F87" }}>
+          <p
+            className="text-xs font-semibold mb-3 text-center"
+            style={{ color: "#9A8F87" }}
+          >
             해도리 피드백이 도움이 되었나요?
           </p>
 
@@ -315,9 +300,7 @@ export default function DiaryDetailScreen({
             </button>
 
             <button
-              onClick={() =>
-                setFeedback(feedback === "dislike" ? null : "dislike")
-              }
+              onClick={() => setFeedback(feedback === "dislike" ? null : "dislike")}
               className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
               style={{
                 background: feedback === "dislike" ? "#FDDDD8" : "#EDE8E0",

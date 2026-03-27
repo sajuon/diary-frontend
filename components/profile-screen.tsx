@@ -5,7 +5,11 @@ import Image from "next/image"
 
 interface ProfileScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
-  profile: { birth_date?: string } | null
+  profile: {
+    birth_date?: string
+    birth_time?: string
+  } | null
+
   dashboardData: {
     diary_stats: {
       consecutive_days: number
@@ -56,6 +60,10 @@ type ManseData = {
     tenGod: string
   }>
   elementSummary: Record<string, number>
+  analysis?: string
+  analysis_date?: string
+  model?: string | null
+  chart_provided?: boolean
 }
 
 export default function ProfileScreen({
@@ -65,7 +73,7 @@ export default function ProfileScreen({
   onUpdateProfile,
 }: ProfileScreenProps) {
   const API_BASE_URL = useMemo(
-    () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+    () => process.env.NEXT_PUBLIC_API_URL || "",
     []
   )
 
@@ -92,6 +100,8 @@ export default function ProfileScreen({
 
   const [showManse, setShowManse] = useState(false)
   const [manseData, setManseData] = useState<ManseData | null>(null)
+  const [manseLoading, setManseLoading] = useState(false)
+  const [manseError, setManseError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchUser() {
@@ -112,30 +122,45 @@ export default function ProfileScreen({
   }, [API_BASE_URL, authHeaders])
 
   useEffect(() => {
-    if (user && editOpen) {
-      setEditNickname(user.nickname || "")
-      setEditProfileImage(user.profile_image || "")
-      setEditBirth(profile?.birth_date ? profile.birth_date : "")
-      setEditBirthTime("")
+  if (user && editOpen) {
+    setEditNickname(user.nickname || "")
+    setEditProfileImage(user.profile_image || "")
+    setEditBirth(profile?.birth_date ?? "")
+    setEditBirthTime(
+      profile?.birth_time ? profile.birth_time.slice(0, 5) : ""
+    )
+  }
+}, [user, editOpen, profile])
+
+  async function fetchManse() {
+    setManseLoading(true)
+    setManseError(null)
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/saju/manse`, {
+        headers: authHeaders,
+        credentials: "include",
+        cache: "no-store",
+      })
+
+      if (!res.ok) {
+        const message = await res.text()
+        throw new Error(message || "사주 해석을 불러오지 못했습니다.")
+      }
+
+      const data = (await res.json()) as ManseData
+      setManseData(data)
+    } catch (err: any) {
+      setManseError(err?.message || "사주 해석을 불러오지 못했습니다.")
+    } finally {
+      setManseLoading(false)
     }
-  }, [user, editOpen, profile])
+  }
 
   useEffect(() => {
-    async function fetchManse() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/saju/manse`, {
-          headers: authHeaders,
-          credentials: "include",
-        })
-        if (!res.ok) return
-        const data = (await res.json()) as ManseData
-        setManseData(data)
-      } catch {
-        // noop
-      }
+    if (showManse) {
+      void fetchManse()
     }
-
-    if (showManse) fetchManse()
   }, [showManse, API_BASE_URL, authHeaders])
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -159,9 +184,9 @@ export default function ProfileScreen({
 
       if (!res1.ok) throw new Error("닉네임/프로필 수정 실패")
 
-      if (editBirth) {
+      if (editBirth || editBirthTime) {
         await onUpdateProfile({
-          birth_date: editBirth,
+          birth_date: editBirth || null,
           birth_time: editBirthTime || null,
           birth_place: null,
           sex: null,
@@ -212,6 +237,10 @@ export default function ProfileScreen({
   const streak = dashboardData?.diary_stats?.consecutive_days ?? 0
   const totalDiaries = dashboardData?.diary_stats?.total_diaries ?? 0
   const pearls = user?.pearls ?? 0
+  const manseSummary =
+    profile?.birth_date
+      ? "오늘 기준 흐름까지 반영해서 사주 해석을 다시 불러와요."
+      : "생년월일을 입력하면 더 자세한 사주 해석을 볼 수 있어요."
 
   return (
     <div
@@ -268,7 +297,7 @@ export default function ProfileScreen({
                     ? user.profile_image.startsWith("/static")
                       ? `${API_BASE_URL}${user.profile_image}`
                       : user.profile_image
-                    : "/images/haedori-character.jpg"
+                    : "/images/haedori-character.png"
                 }
                 alt="프로필"
                 width={64}
@@ -547,7 +576,177 @@ export default function ProfileScreen({
             </div>
           ))}
         </div>
+
+        <div
+          className="rounded-3xl p-5"
+          style={{
+            background: "#FFF7F1",
+            border: "1.5px solid #F1D7C9",
+            boxShadow: "0 2px 12px rgba(201,133,106,0.10)",
+          }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-bold mb-1" style={{ color: "#B07A62" }}>
+                사주 해석
+              </p>
+              <p
+                className="text-sm font-extrabold"
+                style={{ color: "#3D3530" }}
+              >
+                오늘 기준으로 다시 읽는 나의 흐름
+              </p>
+              <p
+                className="text-xs leading-5 mt-2"
+                style={{ color: "#8C7A70" }}
+              >
+                {manseSummary}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowManse(true)}
+              className="px-4 py-2 rounded-2xl text-sm font-bold whitespace-nowrap"
+              style={{
+                background: "#C9856A",
+                color: "#FFFCF8",
+                boxShadow: "0 8px 18px rgba(201,133,106,0.18)",
+              }}
+            >
+              사주 보기
+            </button>
+          </div>
+        </div>
       </div>
+
+      {showManse && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center px-4 py-6"
+          style={{ background: "rgba(61,53,48,0.45)" }}
+          onClick={() => setShowManse(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-[28px] overflow-hidden"
+            style={{
+              background: "#FFFCF8",
+              border: "1.5px solid #E5DDD5",
+              boxShadow: "0 16px 40px rgba(61,53,48,0.18)",
+              maxHeight: "90vh",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid #F0EAE3" }}
+            >
+              <div>
+                <p className="text-xs font-bold" style={{ color: "#B07A62" }}>
+                  사주 해석
+                </p>
+                <h3
+                  className="text-base font-extrabold mt-0.5"
+                  style={{ color: "#3D3530" }}
+                >
+                  오늘의 흐름을 반영한 해석
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void fetchManse()}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold"
+                  style={{
+                    background: "#F7EEE7",
+                    color: "#B07A62",
+                    border: "1px solid #F1D7C9",
+                  }}
+                >
+                  다시 불러오기
+                </button>
+                <button
+                  onClick={() => setShowManse(false)}
+                  className="w-9 h-9 rounded-full flex items-center justify-center"
+                  style={{ background: "#F7F1EB", color: "#6E625B" }}
+                  aria-label="사주 해석 닫기"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 overflow-y-auto" style={{ maxHeight: "calc(90vh - 72px)" }}>
+              {manseLoading && (
+                <div className="py-16 text-center">
+                  <div
+                    className="w-8 h-8 rounded-full border-2 border-[#E8D2C6] border-t-[#C9856A] animate-spin mx-auto"
+                  />
+                  <p
+                    className="text-sm font-semibold mt-4"
+                    style={{ color: "#8C7A70" }}
+                  >
+                    오늘의 사주 해석을 불러오는 중이에요.
+                  </p>
+                </div>
+              )}
+
+              {!manseLoading && manseError && (
+                <div
+                  className="rounded-2xl p-4 text-sm leading-6"
+                  style={{
+                    background: "#FFF1EE",
+                    border: "1px solid #F3CCC3",
+                    color: "#9D4F45",
+                  }}
+                >
+                  {manseError}
+                </div>
+              )}
+
+              {!manseLoading && !manseError && manseData && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {manseData.analysis_date && (
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: "#F7EEE7", color: "#8C6F5E" }}
+                      >
+                        기준일 {manseData.analysis_date}
+                      </span>
+                    )}
+                    {manseData.model && (
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: "#F3F0E8", color: "#7E735C" }}
+                      >
+                        모델 {manseData.model}
+                      </span>
+                    )}
+                    {!profile?.birth_date && (
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: "#F8F2DB", color: "#8A7344" }}
+                      >
+                        생년월일 입력 시 더 정확해져요
+                      </span>
+                    )}
+                  </div>
+
+                  <div
+                    className="rounded-[24px] p-5 text-sm leading-7 whitespace-pre-line"
+                    style={{
+                      background: "#FFF9F4",
+                      border: "1px solid #F2E3D7",
+                      color: "#3D3530",
+                    }}
+                  >
+                    {manseData.analysis || "사주 해석 결과가 아직 없어요."}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

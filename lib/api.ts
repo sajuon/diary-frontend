@@ -1,5 +1,14 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
+
+export class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
+}
 
 class ApiClient {
   private baseURL: string
@@ -35,14 +44,6 @@ class ApiClient {
       credentials: "include",
     })
 
-    if (response.status === 401) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("access_token")
-        window.location.href = "/login"
-      }
-      throw new Error("인증이 필요합니다.")
-    }
-
     if (!response.ok) {
       let errorMessage = `HTTP ${response.status}`
 
@@ -50,10 +51,10 @@ class ApiClient {
         const error = await response.json()
         errorMessage = error.detail || errorMessage
       } catch {
-        // JSON이 아니면 기본 메시지 유지
+        // ignore
       }
 
-      throw new Error(errorMessage)
+      throw new ApiError(errorMessage, response.status)
     }
 
     const contentType = response.headers.get("content-type")
@@ -63,10 +64,6 @@ class ApiClient {
 
     return {} as T
   }
-
-  // ======================
-  // Auth
-  // ======================
 
   async login(email: string, password: string) {
     return this.request<{ access_token: string }>("/api/auth/login", {
@@ -80,22 +77,15 @@ class ApiClient {
     code: string,
     redirectUri: string
   ) {
-    return this.request<{ access_token: string }>(
-      "/api/auth/oauth/exchange",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          provider,
-          access_token: code,
-          redirect_uri: redirectUri,
-        }),
-      }
-    )
+    return this.request<{ access_token: string }>("/api/auth/oauth/exchange", {
+      method: "POST",
+      body: JSON.stringify({
+        provider,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    })
   }
-
-  // ======================
-  // User
-  // ======================
 
   async getMe() {
     return this.request("/api/users/me")
@@ -108,17 +98,9 @@ class ApiClient {
     })
   }
 
-  // ======================
-  // Dashboard
-  // ======================
-
   async getDashboard() {
     return this.request("/api/dashboard")
   }
-
-  // ======================
-  // Diary
-  // ======================
 
   async getDiaries(month: string) {
     return this.request(`/api/diary?month=${month}`)
@@ -128,16 +110,46 @@ class ApiClient {
     return this.request(`/api/diary/date/${date}`)
   }
 
-  async createDiary(data: { content: string; mood_tags: string[] }) {
+  async getTodayDiary() {
+    return this.request("/api/diary/today")
+  }
+
+  async getDiaryQuestion() {
+    return this.request<{
+      question: string
+      model?: string
+      source_type?: string
+      entry_date?: string
+      created_at?: string
+      cached?: boolean
+    }>("/api/diary/question")
+  }
+
+  async createDiary(data: {
+    content: string
+    weather: string
+    mood_tags: string[]
+  }) {
     return this.request("/api/diary/today", {
       method: "POST",
       body: JSON.stringify(data),
     })
   }
 
+  async updateTodayDiary(data: {
+    content: string
+    weather: string
+    mood_tags: string[]
+  }) {
+    return this.request("/api/diary/today", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
   async updateDiary(
     date: string,
-    data: { content: string; mood_tags: string[] }
+    data: { content: string; weather: string; mood_tags: string[] }
   ) {
     return this.request(`/api/diary/date/${date}`, {
       method: "PUT",
@@ -151,12 +163,16 @@ class ApiClient {
     })
   }
 
-  // ======================
-  // Letters
-  // ======================
-
   async getLetters(month: string) {
     return this.request(`/api/letters?month=${month}`)
+  }
+
+  async getLatestLetter() {
+    return this.request("/api/letters/latest")
+  }
+
+  async getTodayLetter() {
+    return this.request("/api/letters/today")
   }
 
   async getLetterById(letterId: number) {
@@ -169,29 +185,29 @@ class ApiClient {
     })
   }
 
-  async generateTodayLetter() {
-    return this.request("/api/letters/generate/today", {
+  async generateLetter(targetDate?: string, force = false) {
+    const params = new URLSearchParams()
+    if (targetDate) params.set("target_date", targetDate)
+    if (force) params.set("force", "true")
+
+    const query = params.toString() ? `?${params.toString()}` : ""
+
+    return this.request(`/api/letters/generate${query}`, {
       method: "POST",
     })
   }
 
-  // ======================
-  // Fortune
-  // ======================
+  async generateTodayLetter() {
+    return this.generateLetter()
+  }
 
   async getTodayFortune() {
     return this.request("/api/fortune/today")
   }
 
   async getFortunes(fromDate: string, toDate: string) {
-    return this.request(
-      `/api/fortune?from_date=${fromDate}&to_date=${toDate}`
-    )
+    return this.request(`/api/fortune?from_date=${fromDate}&to_date=${toDate}`)
   }
-
-  // ======================
-  // Profile
-  // ======================
 
   async getBirthProfile() {
     return this.request("/api/profile/birth")
@@ -204,10 +220,6 @@ class ApiClient {
     })
   }
 
-  // ======================
-  // Settings
-  // ======================
-
   async getNotificationSettings() {
     return this.request("/api/settings/notifications")
   }
@@ -218,10 +230,6 @@ class ApiClient {
       body: JSON.stringify(data),
     })
   }
-
-  // ======================
-  // Web Push
-  // ======================
 
   async getWebPushPublicKey() {
     return this.request<{ public_key: string }>("/api/web-push/public-key")
@@ -250,10 +258,6 @@ class ApiClient {
       body: JSON.stringify(data),
     })
   }
-
-  // ======================
-  // Shop
-  // ======================
 
   async getShopItems(itemType?: string) {
     const query = itemType ? `?item_type=${itemType}` : ""

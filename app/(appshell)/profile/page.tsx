@@ -5,7 +5,10 @@ import { useEffect, useMemo, useState } from "react"
 import ProfileScreen from "@/components/profile-screen"
 import { apiClient } from "@/lib/api"
 
-type BirthProfile = { birth_date?: string } | null
+type BirthProfile = {
+  birth_date?: string
+  birth_time?: string
+} | null
 
 type DashboardData = {
   diary_stats: {

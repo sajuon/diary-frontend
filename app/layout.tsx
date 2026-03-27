@@ -16,19 +16,19 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
+        url: '/images/haedori-character.png',
+        media: '(prefers-color-scheme: light)', //라이트모드
       },
       {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
+        url: '/images/haedori-character.png',
+        media: '(prefers-color-scheme: dark)', //다크모드
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/images/haedori-character.png',
+        type: 'image/svg+xml', //fallback
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/apple-icon.png', //아이폰 홈화면 
   },
 }
 

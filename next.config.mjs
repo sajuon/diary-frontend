@@ -7,8 +7,8 @@ const nextConfig = {
     unoptimized: true,
     remotePatterns: [
       {
-        protocol: 'http',
-        hostname: 'localhost',
+        protocol: 'https',
+        hostname: '0.0.0.0',
         port: '8000',
         pathname: '/static/**',
       },

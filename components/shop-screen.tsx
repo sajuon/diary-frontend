@@ -63,18 +63,32 @@ const shopItems: Record<
   ],
 }
 
-// ✅ 프론트 아이템ID(string) -> 백엔드 itemId(number) 매핑
-// ⚠️ 숫자 id는 백엔드 shop item id와 맞춰줘야 함
+// 프론트 아이템ID(string) -> 백엔드 itemId(number) 매핑
+// DB 기준:
+// 1~6 furniture / 7~12 decoration / 13~18 food
 const backendItemIdMap: Record<string, number> = {
-  fd1: 1,
-  fd2: 2,
-  fd3: 3,
-  fd4: 4,
-  fd5: 5,
-  fd6: 6,
+  fn1: 1,
+  fn2: 2,
+  fn3: 3,
+  fn4: 4,
+  fn5: 5,
+  fn6: 6,
+
+  dc1: 7,
+  dc2: 8,
+  dc3: 9,
+  dc4: 10,
+  dc5: 11,
+  dc6: 12,
+
+  fd1: 13,
+  fd2: 14,
+  fd3: 15,
+  fd4: 16,
+  fd5: 17,
+  fd6: 18,
 }
 
-// ✅ 간식 INFO 메타
 type Trait = "E" | "I" | "N" | "S" | "T" | "F" | "J" | "P"
 
 const snackInfoById: Record<
@@ -113,7 +127,6 @@ const snackInfoById: Record<
   },
 }
 
-// ✅ 능력치 색상(글자색) + 칩 배경
 const traitStyle: Record<Trait, { color: string; bg: string; border: string }> = {
   E: { color: "#D14B6A", bg: "#FFE3EC", border: "#F4B8C8" },
   I: { color: "#2E7BA6", bg: "#E1F2FF", border: "#B9E0F7" },
@@ -135,7 +148,10 @@ function extractOwnedBackendIds(purchases: any[]): Set<number> {
 }
 
 function EffectChips({ effects }: { effects: Partial<Record<Trait, number>> }) {
-  const entries = (Object.entries(effects) as Array<[Trait, number]>).filter(([, v]) => typeof v === "number" && v !== 0)
+  const entries = (Object.entries(effects) as Array<[Trait, number]>).filter(
+    ([, v]) => typeof v === "number" && v !== 0
+  )
+
   if (!entries.length) {
     return (
       <span className="text-xs font-bold" style={{ color: "#9A8F87" }}>
@@ -144,7 +160,6 @@ function EffectChips({ effects }: { effects: Partial<Record<Trait, number>> }) {
     )
   }
 
-  // 보기 좋게 E/I, N/S, T/F, J/P 순서
   const order: Trait[] = ["E", "I", "N", "S", "T", "F", "J", "P"]
   entries.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
 
@@ -171,7 +186,7 @@ function EffectChips({ effects }: { effects: Partial<Record<Trait, number>> }) {
 }
 
 export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopScreenProps) {
-  const [activeCategory, setActiveCategory] = useState<CategoryId>("wallpaper")
+  const [activeCategory, setActiveCategory] = useState<CategoryId>("furniture")
 
   const pearls = useUserPearls()
   const [localPearls, setLocalPearls] = useState<number>(pearls ?? 0)
@@ -183,14 +198,15 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
   const items = shopItems[activeCategory] || []
   const ownedBackendIds = useMemo(() => extractOwnedBackendIds(purchases), [purchases])
 
-  // INFO 바텀시트
   const [infoOpen, setInfoOpen] = useState(false)
   const [infoSnackId, setInfoSnackId] = useState<string | null>(null)
+  const [isPurchasing, setIsPurchasing] = useState<string | null>(null)
 
   const openInfo = (snackId: string) => {
     setInfoSnackId(snackId)
     setInfoOpen(true)
   }
+
   const closeInfo = () => {
     setInfoOpen(false)
     setInfoSnackId(null)
@@ -201,22 +217,30 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
 
   const handlePurchase = async (frontItemId: string, cost: number) => {
     const backendId = backendItemIdMap[frontItemId]
+
     if (!backendId) {
-      alert("백엔드 itemId 매핑이 없습니다. backendItemIdMap을 확인해줘.")
+      alert("이 카테고리는 아직 준비 중이에요.")
       return
     }
+
     if (ownedBackendIds.has(backendId)) return
-    if (pearls === null || typeof pearls !== "number" || pearls < cost) return
 
-    await onPurchase(backendId)
+    if (typeof localPearls !== "number" || localPearls < cost) {
+      alert("진주가 부족합니다.")
+      return
+    }
 
-    // UX용 로컬 차감
-    setLocalPearls((p) => p - cost)
+    try {
+      setIsPurchasing(frontItemId)
+      await onPurchase(backendId)
+      setLocalPearls((prev) => prev - cost)
+    } finally {
+      setIsPurchasing(null)
+    }
   }
 
   return (
     <div className="flex flex-col h-full" style={{ background: "#F8F6F2" }}>
-      {/* Header */}
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <button
           onClick={() => onNavigate("home")}
@@ -224,7 +248,17 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="뒤로 가기"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D3530" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#3D3530"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
@@ -233,9 +267,14 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
           해도리 상점
         </h2>
 
-        {/* Pearl balance */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}>
-          <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "#D4AF8A" }}>
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
+        >
+          <div
+            className="w-4 h-4 rounded-full flex items-center justify-center"
+            style={{ background: "#D4AF8A" }}
+          >
             <div className="w-2 h-2 rounded-full" style={{ background: "#FFFCF8" }} />
           </div>
           <span className="text-sm font-bold" style={{ color: "#3D3530" }}>
@@ -244,22 +283,23 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
         </div>
       </div>
 
-      {/* Banner */}
       <div className="px-5 mb-4">
-        <div className="rounded-2xl px-5 py-4 flex items-center justify-between" style={{ background: "#F2C4A8" }}>
+        <div
+          className="rounded-2xl px-5 py-4 flex items-center justify-between"
+          style={{ background: "#F2C4A8" }}
+        >
           <div>
             <p className="text-xs font-bold" style={{ color: "#C9856A" }}>
-              이번 주 신상
+              오늘의 추천
             </p>
             <p className="text-sm font-extrabold" style={{ color: "#3D3530" }}>
-              해달 패턴 벽지 출시!
+              새로운 아이템으로 해도리 방을 꾸며보세요
             </p>
           </div>
           <span className="text-3xl">🦦</span>
         </div>
       </div>
 
-      {/* Category tabs */}
       <div className="px-5 mb-4">
         <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
           {categories.map((cat) => (
@@ -271,7 +311,8 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                 background: activeCategory === cat.id ? "#C9856A" : "#FFFCF8",
                 color: activeCategory === cat.id ? "#FFFCF8" : "#9A8F87",
                 border: activeCategory === cat.id ? "1.5px solid #C9856A" : "1.5px solid #E5DDD5",
-                boxShadow: activeCategory === cat.id ? "0 2px 8px rgba(201,133,106,0.25)" : "none",
+                boxShadow:
+                  activeCategory === cat.id ? "0 2px 8px rgba(201,133,106,0.25)" : "none",
               }}
             >
               <span>{cat.icon}</span>
@@ -281,16 +322,24 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
         </div>
       </div>
 
-      {/* Items grid */}
       <div className="flex-1 overflow-y-auto px-5 pb-8">
         <div className="grid grid-cols-2 gap-3">
           {items.map((item) => {
             const backendId = backendItemIdMap[item.id]
             const isOwned = backendId ? ownedBackendIds.has(backendId) : false
-            const canAfford = typeof pearls === "number" && pearls >= item.pearls
-
+            const canAfford = typeof localPearls === "number" && localPearls >= item.pearls
+            const isPurchasingThis = isPurchasing === item.id
             const isSnack = activeCategory === "food"
             const hasInfo = isSnack && !!snackInfoById[item.id]
+            const isMapped = !!backendId
+
+            let buttonLabel = "구매"
+            if (!isMapped) buttonLabel = "준비중"
+            else if (isOwned) buttonLabel = "보유중"
+            else if (!canAfford) buttonLabel = "부족"
+            else if (isPurchasingThis) buttonLabel = "처리중"
+
+            const isDisabled = !isMapped || isOwned || !canAfford || isPurchasingThis
 
             return (
               <div
@@ -302,17 +351,21 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                   boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
                 }}
               >
-                {/* Item preview */}
-                <div className="w-full h-28 flex items-center justify-center relative" style={{ background: item.bg }}>
+                <div
+                  className="w-full h-28 flex items-center justify-center relative"
+                  style={{ background: item.bg }}
+                >
                   <span className="text-5xl">{item.emoji}</span>
 
-                  {/* INFO 버튼 (간식만) */}
                   {hasInfo && (
                     <button
                       type="button"
                       onClick={() => openInfo(item.id)}
                       className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center active:scale-95"
-                      style={{ background: "rgba(255,252,248,0.92)", border: "1.5px solid #E5DDD5" }}
+                      style={{
+                        background: "rgba(255,252,248,0.92)",
+                        border: "1.5px solid #E5DDD5",
+                      }}
                       aria-label="간식 정보"
                       title="정보"
                     >
@@ -320,7 +373,6 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                     </button>
                   )}
 
-                  {/* 보유 뱃지 */}
                   {isOwned && (
                     <div
                       className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-bold"
@@ -331,16 +383,17 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                   )}
                 </div>
 
-                {/* Item info */}
                 <div className="px-3 py-3">
                   <p className="text-sm font-bold mb-2" style={{ color: "#3D3530" }}>
                     {item.name}
                   </p>
 
                   <div className="flex items-center justify-between">
-                    {/* Pearl cost */}
                     <div className="flex items-center gap-1">
-                      <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center" style={{ background: "#D4AF8A" }}>
+                      <div
+                        className="w-3.5 h-3.5 rounded-full flex items-center justify-center"
+                        style={{ background: "#D4AF8A" }}
+                      >
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#FFFCF8" }} />
                       </div>
                       <span className="text-sm font-extrabold" style={{ color: "#D4AF8A" }}>
@@ -348,17 +401,22 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                       </span>
                     </div>
 
-                    {/* Buy button */}
                     <button
                       onClick={() => handlePurchase(item.id, item.pearls)}
-                      disabled={isOwned || !canAfford || pearls === null}
+                      disabled={isDisabled}
                       className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{
-                        background: isOwned ? "#EDE8E0" : canAfford ? "#C9856A" : "#EDE8E0",
-                        color: isOwned ? "#9A8F87" : canAfford ? "#FFFCF8" : "#9A8F87",
+                        background:
+                          isOwned || !canAfford || !isMapped || isPurchasingThis
+                            ? "#EDE8E0"
+                            : "#C9856A",
+                        color:
+                          isOwned || !canAfford || !isMapped || isPurchasingThis
+                            ? "#9A8F87"
+                            : "#FFFCF8",
                       }}
                     >
-                      {isOwned ? "보유중" : canAfford ? "구매" : "부족"}
+                      {buttonLabel}
                     </button>
                   </div>
                 </div>
@@ -368,10 +426,8 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
         </div>
       </div>
 
-      {/* INFO Bottom sheet */}
       {infoOpen && infoSnackId && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
-          {/* overlay */}
           <button
             type="button"
             className="absolute inset-0"
@@ -380,7 +436,6 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
             style={{ background: "rgba(0,0,0,0.35)" }}
           />
 
-          {/* sheet */}
           <div
             className="relative w-full max-w-md mx-auto rounded-t-3xl px-5 pt-5 pb-6"
             style={{ background: "#FFFCF8", borderTop: "1.5px solid #E5DDD5" }}
@@ -390,8 +445,6 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                 <p className="text-base font-extrabold" style={{ color: "#3D3530" }}>
                   {infoTitle}
                 </p>
-
-                {/* ✅ 능력치 칩 표시(눈에 띄게) */}
                 {infoData ? <EffectChips effects={infoData.effects} /> : null}
               </div>
 
@@ -402,7 +455,17 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
                 style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
                 aria-label="닫기"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D3530" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#3D3530"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
                   <path d="M18 6L6 18" />
                   <path d="M6 6l12 12" />
                 </svg>
