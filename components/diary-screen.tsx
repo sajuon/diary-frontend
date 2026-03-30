@@ -3,9 +3,25 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
+import {
+  getDiaryMonthKeyFromDate,
+  invalidateDiaryMonth,
+} from "@/lib/diary-cache"
 
 interface DiaryScreenProps {
   onNavigate: (screen: string) => void
+}
+
+type DiarySaveResponse = {
+  id?: number
+  user_id?: number
+  entry_date?: string
+  content?: string
+  weather?: string | null
+  mood_tags?: string[] | null
+  summary_tag?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 const weathers = [
@@ -46,7 +62,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
   useEffect(() => {
     async function fetchTodayDiary() {
       try {
-        const data = await apiClient.getTodayDiary() as {
+        const data = (await apiClient.getTodayDiary()) as {
           content?: string
           weather?: string
           mood_tags?: string[]
@@ -86,7 +102,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
       setQuestionLoading(true)
 
       try {
-        const data = await apiClient.getDiaryQuestion() as {
+        const data = (await apiClient.getDiaryQuestion()) as {
           question?: string
           model?: string
           source_type?: string
@@ -121,7 +137,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
     setQuestionLoading(true)
 
     try {
-      const data = await apiClient.getDiaryQuestion() as {
+      const data = (await apiClient.getDiaryQuestion()) as {
         question?: string
       }
 
@@ -140,19 +156,25 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
     setError(null)
 
     try {
+      let saved: DiarySaveResponse
+
       if (isEdit) {
-        await apiClient.updateTodayDiary({
+        saved = (await apiClient.updateTodayDiary({
           content: text,
           weather: selectedWeather,
           mood_tags: [selectedMood],
-        })
+        })) as DiarySaveResponse
       } else {
-        await apiClient.createDiary({
+        saved = (await apiClient.createDiary({
           content: text,
           weather: selectedWeather,
           mood_tags: [selectedMood],
-        })
+        })) as DiarySaveResponse
       }
+
+      const entryDate = saved?.entry_date || new Date().toISOString()
+      const monthKey = getDiaryMonthKeyFromDate(entryDate)
+      invalidateDiaryMonth(monthKey)
 
       onNavigate("calendar")
     } catch (e: any) {
@@ -170,6 +192,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="뒤로 가기"
+          type="button"
         >
           <svg
             width="16"
@@ -207,6 +230,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 boxShadow:
                   activeTab === tab ? "0 2px 6px rgba(0,0,0,0.06)" : "none",
               }}
+              type="button"
             >
               {tab === "question" ? "질문형" : "자유형"}
             </button>
@@ -358,7 +382,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 className="flex flex-col items-center gap-1 py-2.5 rounded-2xl transition-all active:scale-95"
                 style={{
                   background:
-                    selectedMood === m.id ? m.color + "30" : "#FFFCF8",
+                    selectedMood === m.id ? `${m.color}30` : "#FFFCF8",
                   border:
                     selectedMood === m.id
                       ? `1.5px solid ${m.color}`
@@ -409,6 +433,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           }}
           onClick={handleSaveDiary}
           disabled={loading || !text.trim() || (isEdit && !canEdit)}
+          type="button"
         >
           {loading
             ? "저장 중..."

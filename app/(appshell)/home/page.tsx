@@ -5,6 +5,11 @@ import { useEffect, useState } from "react"
 import HomeScreen from "@/components/home-screen"
 import { apiClient, ApiError } from "@/lib/api"
 
+type BirthProfile = {
+  birth_date?: string
+  birth_time?: string
+} | null
+
 type DashboardLetter = {
   id: number
   letter_date: string
@@ -49,9 +54,12 @@ type PurchaseItem = {
 
 export default function HomePage() {
   const router = useRouter()
+
   const [dashboardData, setDashboardData] = useState<DashboardData>(null)
   const [todayFortune, setTodayFortune] = useState<TodayFortune>(null)
   const [purchases, setPurchases] = useState<PurchaseItem[]>([])
+  const [profile, setProfile] = useState<BirthProfile>(null)
+
   const [loading, setLoading] = useState(true)
   const [isFortuneLoading, setIsFortuneLoading] = useState(false)
 
@@ -68,13 +76,14 @@ export default function HomePage() {
           return
         }
 
-        // ✅ 먼저 인증 검증
         await apiClient.getMe()
 
-        const [dashboardResult, purchasesResult] = await Promise.allSettled([
-          apiClient.getDashboard(),
-          apiClient.getUserPurchases(),
-        ])
+        const [dashboardResult, purchasesResult, profileResult] =
+          await Promise.allSettled([
+            apiClient.getDashboard(),
+            apiClient.getUserPurchases(),
+            apiClient.getBirthProfile(),
+          ])
 
         if (dashboardResult.status === "fulfilled") {
           setDashboardData(dashboardResult.value as DashboardData)
@@ -87,6 +96,13 @@ export default function HomePage() {
         } else {
           console.error("Failed to load purchases:", purchasesResult.reason)
           setPurchases([])
+        }
+
+        if (profileResult.status === "fulfilled") {
+          setProfile((profileResult.value ?? null) as BirthProfile)
+        } else {
+          console.error("Failed to load profile:", profileResult.reason)
+          setProfile(null)
         }
       } catch (error: any) {
         console.error("Failed to load home:", error)
@@ -136,12 +152,16 @@ export default function HomePage() {
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
-    } else if (screen === "letter-detail" && params?.letter) {
+      return
+    }
+
+    if (screen === "letter-detail" && params?.letter) {
       const letterId = (params.letter as any).id || params.letter
       router.push(`/letter-detail/${letterId}`)
-    } else {
-      router.push(`/${screen}`)
+      return
     }
+
+    router.push(`/${screen}`)
   }
 
   if (loading) {
@@ -163,6 +183,7 @@ export default function HomePage() {
       purchases={purchases}
       onOpenTodayFlow={handleOpenTodayFlow}
       isTodayFortuneLoading={isFortuneLoading}
+      profile={profile}
     />
   )
 }

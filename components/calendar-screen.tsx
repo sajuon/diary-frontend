@@ -1,10 +1,38 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { apiClient, ApiError } from "@/lib/api"
+import {
+  clearDiaryMonthInvalidation,
+  isDiaryMonthInvalidated,
+} from "@/lib/diary-cache"
 
 interface CalendarScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
+  initialDiaries?: DiaryApiItem[]
+  initialYear?: number
+  initialMonth?: number
 }
+
+type DiaryApiItem = {
+  id: number
+  user_id: number
+  entry_date: string
+  content: string
+  weather?: string | null
+  mood_tags?: string[] | null
+  summary_tag?: string | null
+  created_at: string
+  updated_at: string
+}
+
+type DiaryCalendarItem = {
+  mood: string
+  weather: string
+  label: string
+}
+
+type DiaryMonthCache = Record<string, DiaryApiItem[]>
 
 const moodColors: Record<string, string> = {
   happy: "#F4C97A",
@@ -23,81 +51,219 @@ const weatherIcons: Record<string, string> = {
   windy: "🌬️",
 }
 
-type DiaryCalendarItem = {
-  mood: string
-  weather: string
-  snippet: string
-}
-
 const dayLabels = ["일", "월", "화", "수", "목", "금", "토"]
 
-export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
-  const [diaries, setDiaries] = useState<Record<number, DiaryCalendarItem>>({})
+function formatMonth(year: number, month: number) {
+  return `${year}-${month.toString().padStart(2, "0")}`
+}
+
+function getDiaryLabel(entry: DiaryApiItem) {
+  const summaryTag = (entry.summary_tag || "").trim()
+  if (summaryTag) return summaryTag
+
+  const content = (entry.content || "").replace(/\s+/g, " ").trim()
+  if (!content) return ""
+
+  const compact = content.replace(/\s+/g, "")
+  return compact.length > 6 ? `${compact.slice(0, 6)}…` : compact
+}
+
+function buildDiaryMap(data: DiaryApiItem[]): Record<number, DiaryCalendarItem> {
+  const diaryMap: Record<number, DiaryCalendarItem> = {}
+
+  data.forEach((entry) => {
+    const day = new Date(entry.entry_date).getDate()
+
+    diaryMap[day] = {
+      mood: entry.mood_tags?.[0] || "calm",
+      weather: entry.weather || "sunny",
+      label: getDiaryLabel(entry),
+    }
+  })
+
+  return diaryMap
+}
+
+export default function CalendarScreen({
+  onNavigate,
+  initialDiaries = [],
+  initialYear,
+  initialMonth,
+}: CalendarScreenProps) {
+  const now = new Date()
+
+  const startYear = initialYear ?? now.getFullYear()
+  const startMonth = initialMonth ?? now.getMonth() + 1
+  const initialMonthKey = formatMonth(startYear, startMonth)
+
+  const [year, setYear] = useState<number>(startYear)
+  const [month, setMonth] = useState<number>(startMonth)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [year, setYear] = useState<number>(new Date().getFullYear())
-  const [month, setMonth] = useState<number>(new Date().getMonth() + 1)
-  const [initialized, setInitialized] = useState(false)
+  const [batchSummaryLoading, setBatchSummaryLoading] = useState(false)
+  const [batchSummaryMessage, setBatchSummaryMessage] = useState<string | null>(null)
+
+  const [monthCache, setMonthCache] = useState<DiaryMonthCache>({
+    [initialMonthKey]: initialDiaries,
+  })
+
+  const targetMonthKey = formatMonth(year, month)
+
+  const currentMonthDiaries = useMemo(() => {
+    return monthCache[targetMonthKey] ?? []
+  }, [monthCache, targetMonthKey])
+
+  const diaries = useMemo(() => {
+    return buildDiaryMap(currentMonthDiaries)
+  }, [currentMonthDiaries])
 
   useEffect(() => {
-    if (!initialized) {
-      ;(async () => {
-        try {
-          const token =
-            typeof window !== "undefined"
-              ? localStorage.getItem("access_token")
-              : null
+    let cancelled = false
 
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/diary?month=${year}-${month
-              .toString()
-              .padStart(2, "0")}`,
-            {
-              headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-              credentials: "include",
-            }
-          )
+    const invalidated = isDiaryMonthInvalidated(targetMonthKey)
+    const hasCache = Object.prototype.hasOwnProperty.call(monthCache, targetMonthKey)
 
-          if (res.ok) {
-            const data = await res.json()
-            if (data.length > 0) {
-              const latest = data.reduce((a: any, b: any) =>
-                new Date(a.entry_date) > new Date(b.entry_date) ? a : b
-              )
-              const latestDate = new Date(latest.entry_date)
-              setYear(latestDate.getFullYear())
-              setMonth(latestDate.getMonth() + 1)
-            }
-          }
-        } catch {
-          // 최초 진입 실패는 무시
-        } finally {
-          setInitialized(true)
+    const loadMonthDiaries = async () => {
+      if (invalidated && hasCache) {
+        setMonthCache((prev) => {
+          const next = { ...prev }
+          delete next[targetMonthKey]
+          return next
+        })
+      }
+
+      if (hasCache && !invalidated) {
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const data = await apiClient.getDiaries(targetMonthKey)
+        const safeData = Array.isArray(data) ? data : []
+
+        if (!cancelled) {
+          setMonthCache((prev) => ({
+            ...prev,
+            [targetMonthKey]: safeData,
+          }))
+          clearDiaryMonthInvalidation(targetMonthKey)
         }
-      })()
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "일기 불러오기 실패"
+
+        if (!cancelled) {
+          setError(message)
+          setMonthCache((prev) => ({
+            ...prev,
+            [targetMonthKey]: [],
+          }))
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
     }
-  }, [initialized, year, month])
+
+    loadMonthDiaries()
+
+    return () => {
+      cancelled = true
+    }
+  }, [targetMonthKey, monthCache])
+
+  useEffect(() => {
+    const handleDiaryMonthInvalidated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ monthKey?: string }>
+      const monthKey = customEvent.detail?.monthKey
+      if (!monthKey) return
+
+      setMonthCache((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, monthKey)) {
+          return prev
+        }
+
+        const next = { ...prev }
+        delete next[monthKey]
+        return next
+      })
+    }
+
+    window.addEventListener(
+      "diary-month-invalidated",
+      handleDiaryMonthInvalidated as EventListener
+    )
+
+    return () => {
+      window.removeEventListener(
+        "diary-month-invalidated",
+        handleDiaryMonthInvalidated as EventListener
+      )
+    }
+  }, [])
 
   const handlePrevMonth = () => {
+    setError(null)
+    setBatchSummaryMessage(null)
+
     if (month === 1) {
-      setYear(year - 1)
+      setYear((prev) => prev - 1)
       setMonth(12)
     } else {
-      setMonth(month - 1)
+      setMonth((prev) => prev - 1)
     }
   }
 
   const handleNextMonth = () => {
+    setError(null)
+    setBatchSummaryMessage(null)
+
     if (month === 12) {
-      setYear(year + 1)
+      setYear((prev) => prev + 1)
       setMonth(1)
     } else {
-      setMonth(month + 1)
+      setMonth((prev) => prev + 1)
+    }
+  }
+
+  const handleBatchSummaryGenerate = async () => {
+    try {
+      setBatchSummaryLoading(true)
+      setBatchSummaryMessage(null)
+      setError(null)
+
+      const result = await apiClient.generateMissingDiarySummaryTags()
+
+      setBatchSummaryMessage(
+        result?.message || `${result?.updated_count ?? 0}개의 일기를 요약했어.`
+      )
+
+      Object.keys(monthCache).forEach((monthKey) => {
+        clearDiaryMonthInvalidation(monthKey)
+      })
+
+      setMonthCache((prev) => {
+        const next = { ...prev }
+        delete next[targetMonthKey]
+        return next
+      })
+    } catch (e) {
+      const message =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "일기 전체 요약 실패"
+
+      setBatchSummaryMessage(message)
+    } finally {
+      setBatchSummaryLoading(false)
     }
   }
 
   const daysInMonth = new Date(year, month, 0).getDate()
-  const now = new Date()
   const isCurrentMonth =
     year === now.getFullYear() && month === now.getMonth() + 1
   const today = now.getDate()
@@ -111,55 +277,6 @@ export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
 
-  useEffect(() => {
-    async function fetchDiaries() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("access_token")
-            : null
-
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/diary?month=${year}-${month
-            .toString()
-            .padStart(2, "0")}`,
-          {
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            credentials: "include",
-          }
-        )
-
-        if (!res.ok) throw new Error("일기 불러오기 실패")
-
-        const data = await res.json()
-
-        const diaryMap: Record<number, DiaryCalendarItem> = {}
-
-        data.forEach((entry: any) => {
-          const day = new Date(entry.entry_date).getDate()
-          diaryMap[day] = {
-            mood: entry.mood_tags?.[0] || "calm",
-            weather: entry.weather || "sunny",
-            snippet: (entry.content || "").slice(0, 12),
-          }
-        })
-
-        setDiaries(diaryMap)
-      } catch (e: any) {
-        setError(e.message || "일기 불러오기 실패")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchDiaries()
-  }, [year, month])
-
   return (
     <div className="flex flex-col h-full font-sans" style={{ background: "#F8F6F2" }}>
       <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
@@ -168,6 +285,7 @@ export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="뒤로 가기"
+          type="button"
         >
           <svg
             width="16"
@@ -271,12 +389,13 @@ export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
               <button
                 key={day}
                 onClick={() => {
-                  if (hasEntry) {
-                    const dateStr = `${year}-${month
-                      .toString()
-                      .padStart(2, "0")}-${day.toString().padStart(2, "0")}`
-                    onNavigate("diary-detail", { date: dateStr })
-                  }
+                  if (!hasEntry) return
+
+                  const dateStr = `${year}-${month
+                    .toString()
+                    .padStart(2, "0")}-${day.toString().padStart(2, "0")}`
+
+                  onNavigate("diary-detail", { date: dateStr })
                 }}
                 disabled={!hasEntry}
                 className="flex flex-col items-center rounded-2xl pt-2 pb-2.5 transition-all"
@@ -319,12 +438,14 @@ export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
                     <span className="text-sm leading-none">
                       {weatherIcons[entry.weather] || "☀️"}
                     </span>
+
                     <div
                       className="w-2 h-2 rounded-full mt-1"
                       style={{
                         background: moodColors[entry.mood] || "#A8BBA5",
                       }}
                     />
+
                     <span
                       className="mt-0.5 text-center leading-tight px-0.5"
                       style={{
@@ -336,7 +457,7 @@ export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
                         textOverflow: "ellipsis",
                       }}
                     >
-                      {entry.snippet}
+                      {entry.label}
                     </span>
                   </>
                 )}
@@ -412,6 +533,51 @@ export default function CalendarScreen({ onNavigate }: CalendarScreenProps) {
             </svg>
             해도리 편지함
           </button>
+
+          <button
+            onClick={handleBatchSummaryGenerate}
+            disabled={batchSummaryLoading}
+            className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              background: "#FFFCF8",
+              color: "#6F5CFF",
+              border: "1.5px solid #DDD7FF",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            }}
+            type="button"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#6F5CFF"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {batchSummaryLoading
+              ? "태그 없는 일기 전체 요약 중..."
+              : "태그 없는 일기 전체 요약하기"}
+          </button>
+
+          {batchSummaryMessage && (
+            <div
+              className="w-full rounded-2xl px-4 py-3 text-sm font-medium"
+              style={{
+                background: "#FFFCF8",
+                color: "#6B625C",
+                border: "1px solid #E5DDD5",
+              }}
+            >
+              {batchSummaryMessage}
+            </div>
+          )}
         </div>
       </div>
     </div>

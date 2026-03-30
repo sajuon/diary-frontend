@@ -19,6 +19,10 @@ interface HomeScreenProps {
   purchases?: any[]
   onOpenTodayFlow?: () => Promise<boolean>
   isTodayFortuneLoading?: boolean
+  profile?: {
+    birth_date?: string
+    birth_time?: string
+  } | null
 }
 
 type NotificationItem = {
@@ -28,6 +32,21 @@ type NotificationItem = {
   unread: boolean
   screen: string
   params?: Record<string, unknown>
+}
+
+type ManseData = {
+  pillars: Array<{
+    label: string
+    stem: string
+    branch: string
+    element: "화" | "수" | "목" | "금" | "토" | string
+    tenGod: string
+  }>
+  elementSummary: Record<string, number>
+  analysis?: string
+  analysis_date?: string
+  model?: string | null
+  chart_provided?: boolean
 }
 
 function formatLetterDate(dateString?: string) {
@@ -53,6 +72,7 @@ export default function HomeScreen({
   purchases = [],
   onOpenTodayFlow,
   isTodayFortuneLoading = false,
+  profile = null,
 }: HomeScreenProps) {
   const today = new Date()
   const dateStr = today.toLocaleDateString("ko-KR", {
@@ -62,12 +82,33 @@ export default function HomeScreen({
     weekday: "short",
   })
 
+  const API_BASE_URL = useMemo(
+    () => process.env.NEXT_PUBLIC_API_URL || "",
+    []
+  )
+
+  const token = useMemo(() => {
+    if (typeof window === "undefined") return null
+    return localStorage.getItem("access_token")
+  }, [])
+
+  const authHeaders = useMemo((): Record<string, string> => {
+    const h: Record<string, string> = {}
+    if (token) h.Authorization = `Bearer ${token}`
+    return h
+  }, [token])
+
   const pearls = useUserPearls()
 
   const [showNotifications, setShowNotifications] = useState(false)
   const [showFlowModal, setShowFlowModal] = useState(false)
   const [localReadMap, setLocalReadMap] = useState<Record<string, boolean>>({})
   const [isRoomEditing, setIsRoomEditing] = useState(false)
+
+  const [showManse, setShowManse] = useState(false)
+  const [manseData, setManseData] = useState<ManseData | null>(null)
+  const [manseLoading, setManseLoading] = useState(false)
+  const [manseError, setManseError] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -131,6 +172,42 @@ export default function HomeScreen({
       icon: "💬",
     },
   ]
+
+  const manseSummary =
+    profile?.birth_date
+      ? "오늘 기준 흐름까지 반영해서 사주 해석을 다시 불러와요."
+      : "생년월일을 입력하면 더 자세한 사주 해석을 볼 수 있어요."
+
+  async function fetchManse() {
+    setManseLoading(true)
+    setManseError(null)
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/saju/manse`, {
+        headers: authHeaders,
+        credentials: "include",
+        cache: "no-store",
+      })
+
+      if (!res.ok) {
+        const message = await res.text()
+        throw new Error(message || "사주 해석을 불러오지 못했습니다.")
+      }
+
+      const data = (await res.json()) as ManseData
+      setManseData(data)
+    } catch (err: any) {
+      setManseError(err?.message || "사주 해석을 불러오지 못했습니다.")
+    } finally {
+      setManseLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showManse) {
+      void fetchManse()
+    }
+  }, [showManse, API_BASE_URL, authHeaders])
 
   const notifications = useMemo<NotificationItem[]>(() => {
     const items: NotificationItem[] = []
@@ -297,69 +374,71 @@ export default function HomeScreen({
       className="relative flex flex-col h-full font-sans"
       style={{ background: "#F8F6F2" }}
     >
-      <div className="flex items-center justify-between px-5 pt-12 pb-3 flex-shrink-0">
-        <div>
-          <p className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
-            {dateStr}
-          </p>
-          <p className="text-lg font-extrabold" style={{ color: "#3D3530" }}>
-            좋은 하루예요
-          </p>
-        </div>
+      {!isRoomEditing && (
+        <div className="flex items-center justify-between px-5 pt-12 pb-3 flex-shrink-0">
+          <div>
+            <p className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+              {dateStr}
+            </p>
+            <p className="text-lg font-extrabold" style={{ color: "#3D3530" }}>
+              좋은 하루예요
+            </p>
+          </div>
 
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => onNavigate("pearl-shop")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
-            style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
-            aria-label="진주 상점 열기"
-          >
-            <div
-              className="w-4 h-4 rounded-full"
-              style={{
-                background:
-                  "radial-gradient(circle at 35% 35%, #EDD5A0, #C9A060)",
-              }}
-            />
-            <span className="text-sm font-bold" style={{ color: "#3D3530" }}>
-              {pearls ?? 0}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setShowNotifications(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center relative transition-all active:scale-95"
-            style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
-            aria-label="알림"
-          >
-            <svg
-              width="17"
-              height="17"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#3D3530"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => onNavigate("pearl-shop")}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
+              style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
+              aria-label="진주 상점 열기"
             >
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
-
-            {notifications.some((n) => n.unread) && (
-              <span
-                className="absolute top-1 right-1 w-2 h-2 rounded-full"
-                style={{ background: "#C9856A" }}
-                aria-hidden="true"
+              <div
+                className="w-4 h-4 rounded-full"
+                style={{
+                  background:
+                    "radial-gradient(circle at 35% 35%, #EDD5A0, #C9A060)",
+                }}
               />
-            )}
-          </button>
-        </div>
-      </div>
+              <span className="text-sm font-bold" style={{ color: "#3D3530" }}>
+                {pearls ?? 0}
+              </span>
+            </button>
 
-      <div className="px-4 flex-shrink-0">
-        <div className="relative">
+            <button
+              onClick={() => setShowNotifications(true)}
+              className="w-9 h-9 rounded-full flex items-center justify-center relative transition-all active:scale-95"
+              style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
+              aria-label="알림"
+            >
+              <svg
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#3D3530"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+
+              {notifications.some((n) => n.unread) && (
+                <span
+                  className="absolute top-1 right-1 w-2 h-2 rounded-full"
+                  style={{ background: "#C9856A" }}
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className={isRoomEditing ? "px-0 pt-0 flex-1" : "px-4 flex-shrink-0"}>
+        <div className={isRoomEditing ? "relative h-full" : "relative"}>
           <RoomEdit
             onEditModeChange={setIsRoomEditing}
             purchases={purchases}
@@ -415,145 +494,190 @@ export default function HomeScreen({
         </div>
       </div>
 
-      <div className="px-4 pt-4 flex-shrink-0">
-        <div
-          className="flex items-center justify-around px-3 py-3 rounded-3xl"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
-          }}
-        >
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
-              aria-label={item.label}
-            >
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center"
-                style={{
-                  background: item.bg,
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                }}
-              >
-                {item.icon}
-              </div>
-              <span className="text-xs font-bold" style={{ color: "#3D3530" }}>
-                {item.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="px-4 pt-3 pb-4 space-y-2.5 flex-1">
-        <button
-          onClick={() => onNavigate("diary")}
-          className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all active:scale-[0.98]"
-          style={{
-            background: dashboardData?.diaryDone ? "#EDE8E0" : "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          }}
-          disabled={dashboardData?.diaryDone}
-        >
-          <div className="flex items-center gap-3">
+      {!isRoomEditing && (
+        <>
+          <div className="px-4 pt-4 flex-shrink-0">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              className="flex items-center justify-around px-3 py-3 rounded-3xl"
               style={{
-                background: dashboardData?.diaryDone ? "#C4B8B0" : "#F2C4A8",
+                background: "#FFFCF8",
+                border: "1.5px solid #E5DDD5",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
               }}
             >
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                  className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
+                  aria-label={item.label}
+                >
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    style={{
+                      background: item.bg,
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                    }}
+                  >
+                    {item.icon}
+                  </div>
+                  <span className="text-xs font-bold" style={{ color: "#3D3530" }}>
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="px-4 pt-3 pb-4 space-y-2.5 flex-1">
+            <button
+              onClick={() => onNavigate("diary")}
+              className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all active:scale-[0.98]"
+              style={{
+                background: dashboardData?.diaryDone ? "#EDE8E0" : "#FFFCF8",
+                border: "1.5px solid #E5DDD5",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+              disabled={dashboardData?.diaryDone}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{
+                    background: dashboardData?.diaryDone ? "#C4B8B0" : "#F2C4A8",
+                  }}
+                >
+                  <svg
+                    width="17"
+                    height="17"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#C9856A"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </div>
+
+                <div className="text-left">
+                  <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
+                    {dashboardData?.diaryDone
+                      ? "오늘 일기 쓰기 완료"
+                      : "오늘 일기 쓰기"}
+                  </p>
+                  <p className="text-xs" style={{ color: "#9A8F87" }}>
+                    {dashboardData?.diaryDone
+                      ? "내일 또 만나요!"
+                      : "해도리가 기다리고 있어요"}
+                  </p>
+                </div>
+              </div>
+
               <svg
-                width="17"
-                height="17"
+                width="15"
+                height="15"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#C9856A"
+                stroke="#C4B8B0"
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden="true"
               >
-                <path d="M12 5v14M5 12h14" />
+                <path d="M9 18l6-6-6-6" />
               </svg>
-            </div>
+            </button>
 
-            <div className="text-left">
-              <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
-                {dashboardData?.diaryDone
-                  ? "오늘 일기 쓰기 완료"
-                  : "오늘 일기 쓰기"}
-              </p>
-              <p className="text-xs" style={{ color: "#9A8F87" }}>
-                {dashboardData?.diaryDone
-                  ? "내일 또 만나요!"
-                  : "해도리가 기다리고 있어요"}
-              </p>
-            </div>
-          </div>
-
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#C4B8B0"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        </button>
-
-        <div
-          className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          }}
-        >
-          <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-              style={{ background: "#EDE8E0" }}
+              className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
+              style={{
+                background: "#FFFCF8",
+                border: "1.5px solid #E5DDD5",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
             >
-              🔥
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                  style={{ background: "#EDE8E0" }}
+                >
+                  🔥
+                </div>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
+                    {dashboardData?.diary_stats?.consecutive_days > 0
+                      ? "연속 기록 중"
+                      : "기록 시작해보세요!"}
+                  </p>
+                  <p className="text-xs" style={{ color: "#9A8F87" }}>
+                    {dashboardData?.diary_stats?.consecutive_days > 0
+                      ? `오늘도 기록하면 ${dashboardData.diary_stats.consecutive_days + 1}일 달성!`
+                      : "해도리가 응원해요"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <p
+                  className="text-2xl font-extrabold"
+                  style={{ color: "#C9856A" }}
+                >
+                  {dashboardData?.diary_stats?.consecutive_days ?? 0}
+                </p>
+                <p className="text-xs" style={{ color: "#9A8F87" }}>
+                  일
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
-                {dashboardData?.diary_stats?.consecutive_days > 0
-                  ? "연속 기록 중"
-                  : "기록 시작해보세요!"}
-              </p>
-              <p className="text-xs" style={{ color: "#9A8F87" }}>
-                {dashboardData?.diary_stats?.consecutive_days > 0
-                  ? `오늘도 기록하면 ${dashboardData.diary_stats.consecutive_days + 1}일 달성!`
-                  : "해도리가 응원해요"}
-              </p>
+
+            <div
+              className="rounded-3xl p-5"
+              style={{
+                background: "#FFF7F1",
+                border: "1.5px solid #F1D7C9",
+                boxShadow: "0 2px 12px rgba(201,133,106,0.10)",
+              }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold mb-1" style={{ color: "#B07A62" }}>
+                    사주 해석
+                  </p>
+                  <p
+                    className="text-sm font-extrabold"
+                    style={{ color: "#3D3530" }}
+                  >
+                    오늘 기준으로 다시 읽는 나의 흐름
+                  </p>
+                  <p
+                    className="text-xs leading-5 mt-2"
+                    style={{ color: "#8C7A70" }}
+                  >
+                    {manseSummary}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setShowManse(true)}
+                  className="px-4 py-2 rounded-2xl text-sm font-bold whitespace-nowrap"
+                  style={{
+                    background: "#C9856A",
+                    color: "#FFFCF8",
+                    boxShadow: "0 8px 18px rgba(201,133,106,0.18)",
+                  }}
+                >
+                  사주 보기
+                </button>
+              </div>
             </div>
           </div>
+        </>
+      )}
 
-          <div className="text-right">
-            <p
-              className="text-2xl font-extrabold"
-              style={{ color: "#C9856A" }}
-            >
-              {dashboardData?.diary_stats?.consecutive_days ?? 0}
-            </p>
-            <p className="text-xs" style={{ color: "#9A8F87" }}>
-              일
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {showFlowModal && todayFortune && (
+      {!isRoomEditing && showFlowModal && todayFortune && (
         <div
           className="absolute inset-0 z-50 flex items-end"
           style={{ background: "rgba(61,53,48,0.35)" }}
@@ -656,7 +780,137 @@ export default function HomeScreen({
         </div>
       )}
 
-      {showNotifications && (
+      {!isRoomEditing && showManse && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center px-4 py-6"
+          style={{ background: "rgba(61,53,48,0.45)" }}
+          onClick={() => setShowManse(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-[28px] overflow-hidden"
+            style={{
+              background: "#FFFCF8",
+              border: "1.5px solid #E5DDD5",
+              boxShadow: "0 16px 40px rgba(61,53,48,0.18)",
+              maxHeight: "90vh",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid #F0EAE3" }}
+            >
+              <div>
+                <p className="text-xs font-bold" style={{ color: "#B07A62" }}>
+                  사주 해석
+                </p>
+                <h3
+                  className="text-base font-extrabold mt-0.5"
+                  style={{ color: "#3D3530" }}
+                >
+                  오늘의 흐름을 반영한 해석
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void fetchManse()}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold"
+                  style={{
+                    background: "#F7EEE7",
+                    color: "#B07A62",
+                    border: "1px solid #F1D7C9",
+                  }}
+                >
+                  다시 불러오기
+                </button>
+                <button
+                  onClick={() => setShowManse(false)}
+                  className="w-9 h-9 rounded-full flex items-center justify-center"
+                  style={{ background: "#F7F1EB", color: "#6E625B" }}
+                  aria-label="사주 해석 닫기"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div
+              className="px-5 py-4 overflow-y-auto"
+              style={{ maxHeight: "calc(90vh - 72px)" }}
+            >
+              {manseLoading && (
+                <div className="py-16 text-center">
+                  <div className="w-8 h-8 rounded-full border-2 border-[#E8D2C6] border-t-[#C9856A] animate-spin mx-auto" />
+                  <p
+                    className="text-sm font-semibold mt-4"
+                    style={{ color: "#8C7A70" }}
+                  >
+                    오늘의 사주 해석을 불러오는 중이에요.
+                  </p>
+                </div>
+              )}
+
+              {!manseLoading && manseError && (
+                <div
+                  className="rounded-2xl p-4 text-sm leading-6"
+                  style={{
+                    background: "#FFF1EE",
+                    border: "1px solid #F3CCC3",
+                    color: "#9D4F45",
+                  }}
+                >
+                  {manseError}
+                </div>
+              )}
+
+              {!manseLoading && !manseError && manseData && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {manseData.analysis_date && (
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: "#F7EEE7", color: "#8C6F5E" }}
+                      >
+                        기준일 {manseData.analysis_date}
+                      </span>
+                    )}
+                    {manseData.model && (
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: "#F3F0E8", color: "#7E735C" }}
+                      >
+                        모델 {manseData.model}
+                      </span>
+                    )}
+                    {!profile?.birth_date && (
+                      <span
+                        className="px-3 py-1 rounded-full text-xs font-bold"
+                        style={{ background: "#F8F2DB", color: "#8A7344" }}
+                      >
+                        생년월일 입력 시 더 정확해져요
+                      </span>
+                    )}
+                  </div>
+
+                  <div
+                    className="rounded-[24px] p-5 text-sm leading-7 whitespace-pre-line"
+                    style={{
+                      background: "#FFF9F4",
+                      border: "1px solid #F2E3D7",
+                      color: "#3D3530",
+                    }}
+                  >
+                    {manseData.analysis || "사주 해석 결과가 아직 없어요."}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isRoomEditing && showNotifications && (
         <div
           className="absolute inset-0 z-50 flex items-end"
           style={{ background: "rgba(61,53,48,0.35)" }}

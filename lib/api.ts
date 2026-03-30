@@ -65,10 +65,43 @@ class ApiClient {
     return {} as T
   }
 
-  async login(email: string, password: string) {
-    return this.request<{ access_token: string }>("/api/auth/login", {
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "GET",
+    })
+  }
+
+  async post<T>(endpoint: string, body?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
       method: "POST",
-      body: JSON.stringify({ username: email, password }),
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  }
+
+  async put<T>(endpoint: string, body?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  }
+
+  async patch<T>(endpoint: string, body?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "DELETE",
+    })
+  }
+
+  async login(email: string, password: string) {
+    return this.post<{ access_token: string }>("/api/auth/login", {
+      username: email,
+      password,
     })
   }
 
@@ -77,45 +110,39 @@ class ApiClient {
     code: string,
     redirectUri: string
   ) {
-    return this.request<{ access_token: string }>("/api/auth/oauth/exchange", {
-      method: "POST",
-      body: JSON.stringify({
-        provider,
-        code,
-        redirect_uri: redirectUri,
-      }),
+    return this.post<{ access_token: string }>("/api/auth/oauth/exchange", {
+      provider,
+      code,
+      redirect_uri: redirectUri,
     })
   }
 
   async getMe() {
-    return this.request("/api/users/me")
+    return this.get("/api/users/me")
   }
 
   async addPearls(amount: number) {
-    return this.request("/api/users/me/add-pearls", {
-      method: "POST",
-      body: JSON.stringify({ amount }),
-    })
+    return this.post("/api/users/me/add-pearls", { amount })
   }
 
   async getDashboard() {
-    return this.request("/api/dashboard")
+    return this.get("/api/dashboard")
   }
 
   async getDiaries(month: string) {
-    return this.request(`/api/diary?month=${month}`)
+    return this.get(`/api/diary?month=${month}`)
   }
 
   async getDiaryByDate(date: string) {
-    return this.request(`/api/diary/date/${date}`)
+    return this.get(`/api/diary/date/${date}`)
   }
 
   async getTodayDiary() {
-    return this.request("/api/diary/today")
+    return this.get("/api/diary/today")
   }
 
   async getDiaryQuestion() {
-    return this.request<{
+    return this.get<{
       question: string
       model?: string
       source_type?: string
@@ -130,10 +157,7 @@ class ApiClient {
     weather: string
     mood_tags: string[]
   }) {
-    return this.request("/api/diary/today", {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
+    return this.post("/api/diary/today", data)
   }
 
   async updateTodayDiary(data: {
@@ -141,47 +165,61 @@ class ApiClient {
     weather: string
     mood_tags: string[]
   }) {
-    return this.request("/api/diary/today", {
-      method: "PUT",
-      body: JSON.stringify(data),
-    })
+    return this.put("/api/diary/today", data)
   }
 
   async updateDiary(
     date: string,
     data: { content: string; weather: string; mood_tags: string[] }
   ) {
-    return this.request(`/api/diary/date/${date}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    })
+    return this.put(`/api/diary/date/${date}`, data)
   }
 
   async deleteDiary(date: string) {
-    return this.request(`/api/diary/date/${date}`, {
-      method: "DELETE",
-    })
+    return this.delete(`/api/diary/date/${date}`)
+  }
+
+  async generateMissingDiarySummaryTags() {
+    return this.post<{
+      message: string
+      updated_count: number
+      items: Array<{
+        id: number
+        entry_date: string
+        summary_tag: string
+      }>
+      failed_count?: number
+      failed_items?: Array<{
+        id: number
+        entry_date: string
+        reason: string
+      }>
+    }>("/api/diary/summary-tag/batch-missing")
   }
 
   async getLetters(month: string) {
-    return this.request(`/api/letters?month=${month}`)
+    return this.get(`/api/letters?month=${month}`)
   }
 
   async getLatestLetter() {
-    return this.request("/api/letters/latest")
+    return this.get("/api/letters/latest")
   }
 
   async getTodayLetter() {
-    return this.request("/api/letters/today")
+    return this.get("/api/letters/today")
   }
 
   async getLetterById(letterId: number) {
-    return this.request(`/api/letters/${letterId}`)
+    return this.get(`/api/letters/${letterId}`)
   }
 
   async markLetterAsRead(letterId: number) {
-    return this.request(`/api/letters/${letterId}/read`, {
-      method: "PATCH",
+    return this.patch(`/api/letters/${letterId}/read`)
+  }
+
+  async updateLetterFavorite(letterId: number, isFavorite: boolean) {
+    return this.patch(`/api/letters/${letterId}/favorite`, {
+      is_favorite: isFavorite,
     })
   }
 
@@ -192,9 +230,7 @@ class ApiClient {
 
     const query = params.toString() ? `?${params.toString()}` : ""
 
-    return this.request(`/api/letters/generate${query}`, {
-      method: "POST",
-    })
+    return this.post(`/api/letters/generate${query}`)
   }
 
   async generateTodayLetter() {
@@ -202,76 +238,59 @@ class ApiClient {
   }
 
   async getTodayFortune() {
-    return this.request("/api/fortune/today")
+    return this.get("/api/fortune/today")
   }
 
   async getFortunes(fromDate: string, toDate: string) {
-    return this.request(`/api/fortune?from_date=${fromDate}&to_date=${toDate}`)
+    return this.get(`/api/fortune?from_date=${fromDate}&to_date=${toDate}`)
   }
 
   async getBirthProfile() {
-    return this.request("/api/profile/birth")
+    return this.get("/api/profile/birth")
   }
 
   async updateBirthProfile(data: any) {
-    return this.request("/api/profile/birth", {
-      method: "PUT",
-      body: JSON.stringify(data),
-    })
+    return this.put("/api/profile/birth", data)
   }
 
   async getNotificationSettings() {
-    return this.request("/api/settings/notifications")
+    return this.get("/api/settings/notifications")
   }
 
   async updateNotificationSettings(data: any) {
-    return this.request("/api/settings/notifications", {
-      method: "PUT",
-      body: JSON.stringify(data),
-    })
+    return this.put("/api/settings/notifications", data)
   }
 
   async getWebPushPublicKey() {
-    return this.request<{ public_key: string }>("/api/web-push/public-key")
+    return this.get<{ public_key: string }>("/api/web-push/public-key")
   }
 
   async subscribeWebPush(data: {
     subscription: PushSubscriptionJSON
     user_agent?: string
   }) {
-    return this.request("/api/web-push/subscribe", {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
+    return this.post("/api/web-push/subscribe", data)
   }
 
   async unsubscribeWebPush(data: { endpoint: string }) {
-    return this.request("/api/web-push/unsubscribe", {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
+    return this.post("/api/web-push/unsubscribe", data)
   }
 
   async sendWebPushTest(data: { title: string; body: string; url: string }) {
-    return this.request("/api/web-push/test", {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
+    return this.post("/api/web-push/test", data)
   }
 
   async getShopItems(itemType?: string) {
     const query = itemType ? `?item_type=${itemType}` : ""
-    return this.request(`/api/shop/items${query}`)
+    return this.get(`/api/shop/items${query}`)
   }
 
   async purchaseItem(itemId: number) {
-    return this.request(`/api/shop/purchase/${itemId}`, {
-      method: "POST",
-    })
+    return this.post(`/api/shop/purchase/${itemId}`)
   }
 
   async getUserPurchases() {
-    return this.request("/api/shop/purchases")
+    return this.get("/api/shop/purchases")
   }
 }
 

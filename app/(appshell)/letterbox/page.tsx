@@ -14,6 +14,7 @@ interface LetterApiResponse {
   element_hint?: Record<string, unknown> | null
   model?: string | null
   is_read: boolean
+  is_favorite: boolean
   read_at?: string | null
   created_at: string
   updated_at: string
@@ -26,6 +27,8 @@ export default function LetterboxPage() {
 
   const loadLetters = useCallback(async () => {
     try {
+      setLoading(true)
+
       const currentDate = new Date()
       const month = `${currentDate.getFullYear()}-${String(
         currentDate.getMonth() + 1
@@ -35,6 +38,7 @@ export default function LetterboxPage() {
       setLetters(data as LetterApiResponse[])
     } catch (error) {
       console.error("Failed to load letters:", error)
+      setLetters([])
     } finally {
       setLoading(false)
     }
@@ -47,14 +51,21 @@ export default function LetterboxPage() {
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
-    } else if (screen === "letter-detail" && params?.letter) {
+      return
+    }
+
+    if (screen === "letter-detail" && params?.letter) {
       const letterValue = params.letter as { id?: number } | number
       const letterId =
         typeof letterValue === "object" ? letterValue.id : letterValue
-      router.push(`/letter-detail/${letterId}`)
-    } else {
-      router.push(`/${screen}`)
+
+      if (letterId) {
+        router.push(`/letter-detail/${letterId}`)
+        return
+      }
     }
+
+    router.push(`/${screen}`)
   }
 
   if (loading) {

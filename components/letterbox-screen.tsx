@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState, type MouseEvent } from "react"
+import { useMemo, type MouseEvent, useState } from "react"
+import { apiClient } from "@/lib/api"
 
 interface LetterboxScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
@@ -16,6 +17,7 @@ interface LetterApiResponse {
   element_hint?: Record<string, unknown> | null
   model?: string | null
   is_read: boolean
+  is_favorite: boolean
   read_at?: string | null
   created_at: string
   updated_at: string
@@ -49,7 +51,10 @@ export default function LetterboxScreen({
   onNavigate,
   letters,
 }: LetterboxScreenProps) {
-  const [starredMap, setStarredMap] = useState<Record<number, boolean>>({})
+  const [favoriteMap, setFavoriteMap] = useState<Record<number, boolean>>(
+    Object.fromEntries(letters.map((letter) => [letter.id, letter.is_favorite]))
+  )
+  const [pendingIds, setPendingIds] = useState<Record<number, boolean>>({})
 
   const uiLetters = useMemo<LetterUiItem[]>(() => {
     return letters.map((letter) => ({
@@ -57,19 +62,47 @@ export default function LetterboxScreen({
       date: formatLetterDate(letter.letter_date),
       preview: makePreview(letter.content),
       body: letter.content,
-      starred: starredMap[letter.id] ?? false,
+      starred: favoriteMap[letter.id] ?? letter.is_favorite,
       unread: !letter.is_read,
     }))
-  }, [letters, starredMap])
+  }, [letters, favoriteMap])
 
   const unreadCount = uiLetters.filter((l) => l.unread).length
 
-  const toggleStar = (id: number, e: MouseEvent<HTMLSpanElement>) => {
+  const toggleStar = async (id: number, e: MouseEvent<HTMLSpanElement>) => {
     e.stopPropagation()
-    setStarredMap((prev) => ({
+
+    if (pendingIds[id]) return
+
+    const currentValue =
+      favoriteMap[id] ?? letters.find((letter) => letter.id === id)?.is_favorite ?? false
+    const nextValue = !currentValue
+
+    setFavoriteMap((prev) => ({
       ...prev,
-      [id]: !prev[id],
+      [id]: nextValue,
     }))
+    setPendingIds((prev) => ({
+      ...prev,
+      [id]: true,
+    }))
+
+    try {
+      await apiClient.patch(`/api/letters/${id}/favorite`, {
+        is_favorite: nextValue,
+      })
+    } catch (error) {
+      console.error("즐겨찾기 저장 실패:", error)
+      setFavoriteMap((prev) => ({
+        ...prev,
+        [id]: currentValue,
+      }))
+    } finally {
+      setPendingIds((prev) => ({
+        ...prev,
+        [id]: false,
+      }))
+    }
   }
 
   const openLetter = (letter: LetterUiItem) => {
@@ -222,10 +255,11 @@ export default function LetterboxScreen({
 
                 <div className="flex flex-col items-center gap-2 flex-shrink-0 self-center ml-1">
                   <span
-                    onClick={(e) => toggleStar(letter.id, e)}
+                    onClick={(e) => void toggleStar(letter.id, e)}
                     className="w-7 h-7 flex items-center justify-center rounded-full transition-all active:scale-90 cursor-pointer"
                     style={{
                       background: letter.starred ? "#FFF3D0" : "transparent",
+                      opacity: pendingIds[letter.id] ? 0.6 : 1,
                     }}
                     aria-label={letter.starred ? "즐겨찾기 해제" : "즐겨찾기"}
                     role="button"
