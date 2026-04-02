@@ -1,3 +1,10 @@
+// /home/dori/diary-frontend/lib/api.ts
+import {
+  clearAccessToken,
+  getStoredAccessToken,
+  storeAccessToken,
+} from "@/lib/auth-storage"
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
 
 export class ApiError extends Error {
@@ -10,21 +17,83 @@ export class ApiError extends Error {
   }
 }
 
+type BirthProfilePayload = {
+  birth_date?: string | null
+  birth_time?: string | null
+  birth_place?: string | null
+  sex?: string | null
+  timezone?: string | null
+}
+
 class ApiClient {
   private baseURL: string
+  private refreshPromise: Promise<string | null> | null = null
 
   constructor(baseURL: string) {
     this.baseURL = baseURL
   }
 
   private getToken(): string | null {
-    if (typeof window === "undefined") return null
-    return localStorage.getItem("access_token")
+    return getStoredAccessToken()
+  }
+
+  private async parseError(response: Response): Promise<string> {
+    let errorMessage = `HTTP ${response.status}`
+
+    try {
+      const error = await response.json()
+      errorMessage = error.detail || errorMessage
+    } catch {
+      // ignore
+    }
+
+    return errorMessage
+  }
+
+  private async refreshAccessToken(): Promise<string | null> {
+    if (this.refreshPromise) {
+      return this.refreshPromise
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseURL}/api/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+
+        if (!response.ok) {
+          clearAccessToken()
+          return null
+        }
+
+        const data = await response.json()
+
+        if (!data?.access_token) {
+          clearAccessToken()
+          return null
+        }
+
+        storeAccessToken(data.access_token, true)
+        return data.access_token
+      } catch {
+        clearAccessToken()
+        return null
+      } finally {
+        this.refreshPromise = null
+      }
+    })()
+
+    return this.refreshPromise
   }
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retry = true
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`
 
@@ -38,20 +107,35 @@ class ApiClient {
       headers["Authorization"] = `Bearer ${token}`
     }
 
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       ...options,
       headers,
       credentials: "include",
     })
 
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}`
+    if (response.status === 401 && retry) {
+      const newAccessToken = await this.refreshAccessToken()
 
-      try {
-        const error = await response.json()
-        errorMessage = error.detail || errorMessage
-      } catch {
-        // ignore
+      if (newAccessToken) {
+        const retryHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(options.headers as Record<string, string>),
+          Authorization: `Bearer ${newAccessToken}`,
+        }
+
+        response = await fetch(url, {
+          ...options,
+          headers: retryHeaders,
+          credentials: "include",
+        })
+      }
+    }
+
+    if (!response.ok) {
+      const errorMessage = await this.parseError(response)
+
+      if (response.status === 401) {
+        clearAccessToken()
       }
 
       throw new ApiError(errorMessage, response.status)
@@ -99,10 +183,13 @@ class ApiClient {
   }
 
   async login(email: string, password: string) {
-    return this.post<{ access_token: string }>("/api/auth/login", {
-      username: email,
-      password,
-    })
+    return this.post<{ access_token: string; token_type?: string }>(
+      "/api/auth/login",
+      {
+        username: email,
+        password,
+      }
+    )
   }
 
   async oauthLogin(
@@ -110,11 +197,28 @@ class ApiClient {
     code: string,
     redirectUri: string
   ) {
-    return this.post<{ access_token: string }>("/api/auth/oauth/exchange", {
-      provider,
-      code,
-      redirect_uri: redirectUri,
-    })
+    return this.post<{ access_token: string; token_type?: string }>(
+      "/api/auth/oauth/exchange",
+      {
+        provider,
+        code,
+        redirect_uri: redirectUri,
+      }
+    )
+  }
+
+  async refresh() {
+    return this.post<{ access_token: string; token_type?: string }>(
+      "/api/auth/refresh"
+    )
+  }
+
+  async logout() {
+    try {
+      await this.post<{ message: string }>("/api/auth/logout")
+    } finally {
+      clearAccessToken()
+    }
   }
 
   async getMe() {
@@ -249,7 +353,7 @@ class ApiClient {
     return this.get("/api/profile/birth")
   }
 
-  async updateBirthProfile(data: any) {
+  async updateBirthProfile(data: BirthProfilePayload) {
     return this.put("/api/profile/birth", data)
   }
 

@@ -8,6 +8,7 @@ import { apiClient, ApiError } from "@/lib/api"
 type BirthProfile = {
   birth_date?: string
   birth_time?: string
+  birth_place?: string   // 추가
 } | null
 
 type DashboardLetter = {

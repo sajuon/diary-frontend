@@ -1,13 +1,15 @@
+// /home/dori/diary-frontend/app/(appshell)/profile/page.tsx
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import ProfileScreen from "@/components/profile-screen"
 import { apiClient } from "@/lib/api"
 
 type BirthProfile = {
   birth_date?: string
   birth_time?: string
+  birth_place?: string
 } | null
 
 type DashboardData = {
@@ -42,50 +44,26 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // ✅ localStorage에 토큰이 없다면 인증이 안된 상태일 확률이 큼
-  const accessToken = useMemo(() => {
-    if (typeof window === "undefined") return null
-    return window.localStorage.getItem("access_token")
-  }, [])
-
   useEffect(() => {
     const run = async () => {
       setLoading(true)
       setErrorMsg(null)
 
-      // 토큰이 없으면 /profile 들어와도 데이터 요청이 401 날 수 있음
-      if (!accessToken) {
-        setLoading(false)
-        setErrorMsg("로그인이 필요합니다. (access_token 없음)")
-        router.replace("/login")
-        return
-      }
-
       try {
-        // 1) 프로필(생년월일 등) 로드
         const p = await apiClient.getBirthProfile()
         setProfile((p ?? null) as BirthProfile)
       } catch (e) {
         console.error("Failed to load profile:", e)
-        // 프로필 로드 실패해도 대시보드는 계속 시도
       }
 
       try {
-        // 2) 대시보드 로드 (기존 API가 있다면 우선 사용)
         try {
           const d = await apiClient.getDashboard()
-          // 기대 구조: { diary_stats: { consecutive_days, total_diaries } }
           setDashboardData((d ?? null) as DashboardData)
         } catch (dashErr) {
           console.warn("getDashboard failed. fallback to getMe()", dashErr)
 
-          // ✅ 폴백: /api/users/me 기반으로 기록 현황 구성
-          // apiClient에 getMe()가 없으면 아래 부분은 apiClient.get("/api/users/me") 같은 걸로 바꿔야 함
-          const me = (await (apiClient as any).getMe?.()) as MeResponse | undefined
-
-          if (!me) {
-            throw new Error("apiClient.getMe()가 없거나 /api/users/me 호출이 실패했습니다.")
-          }
+          const me = (await apiClient.getMe()) as MeResponse
 
           setDashboardData({
             diary_stats: {
@@ -98,17 +76,25 @@ export default function ProfilePage() {
       } catch (e: any) {
         console.error("Failed to load dashboard:", e)
 
-        // 401이면 토큰 문제일 가능성이 큼 → 로그인으로 보냄
-        const msg = typeof e?.message === "string" ? e.message : "대시보드 로드 실패"
+        const status = typeof e?.status === "number" ? e.status : null
+        const msg =
+          typeof e?.message === "string"
+            ? e.message
+            : "대시보드 로드 실패"
+
         setErrorMsg(msg)
+
+        if (status === 401) {
+          router.replace("/login")
+          return
+        }
       } finally {
         setLoading(false)
       }
     }
 
     run()
-    // accessToken이 바뀔 수도 있으니 의존성에 포함
-  }, [router, accessToken])
+  }, [router])
 
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {

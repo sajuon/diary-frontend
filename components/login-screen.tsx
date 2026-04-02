@@ -1,17 +1,22 @@
+// /home/dori/diary-frontend/components/login-screen.tsx
 "use client"
 
 import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
+import { clearSignupDraft, storeAccessToken } from "@/lib/auth-storage"
+import { createOAuthState, parseOAuthState } from "@/lib/oauth-state"
 
-interface LoginScreenProps {
-  onNavigate: (screen: string) => void
-}
+type Provider = "kakao" | "google"
 
-export default function LoginScreen({ onNavigate }: LoginScreenProps) {
-  const [isLoading, setIsLoading] = useState<string | null>(null)
-  const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null)
+export default function LoginScreen() {
+  const router = useRouter()
   const popupRef = useRef<Window | null>(null)
+  const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null)
+
+  const [isLoading, setIsLoading] = useState<Provider | null>(null)
+  const [rememberMe, setRememberMe] = useState(true)
 
   useEffect(() => {
     return () => {
@@ -22,7 +27,7 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
     }
   }, [])
 
-  const cleanupMessageHandler = () => {
+  const cleanup = () => {
     if (messageHandlerRef.current) {
       window.removeEventListener("message", messageHandlerRef.current)
       messageHandlerRef.current = null
@@ -31,28 +36,47 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
     popupRef.current = null
   }
 
-  const handleOAuthLogin = async (provider: "kakao" | "google") => {
+  const getRedirectUri = (provider: Provider) => {
+    return `${window.location.origin}/auth/callback/${provider}`
+  }
+
+  const buildAuthUrl = (provider: Provider) => {
+    const redirectUri = getRedirectUri(provider)
+    const state = createOAuthState({
+      mode: "login",
+      rememberMe,
+    })
+
+    if (provider === "kakao") {
+      const clientId = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID
+      if (!clientId) {
+        throw new Error("NEXT_PUBLIC_KAKAO_CLIENT_ID가 설정되지 않았어.")
+      }
+
+      return `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}&response_type=code&state=${encodeURIComponent(state)}`
+    }
+
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+    if (!clientId) {
+      throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID가 설정되지 않았어.")
+    }
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=code&scope=${encodeURIComponent(
+      "openid email profile"
+    )}&state=${encodeURIComponent(state)}&prompt=select_account`
+  }
+
+  const handleOAuthLogin = async (provider: Provider) => {
     if (isLoading) return
 
     setIsLoading(provider)
 
     try {
-      const frontendBaseUrl = "https://haedori.ludo-lab.com"
-      const redirectUri = `${frontendBaseUrl}/auth/callback/${provider}`
-
-      let authUrl = ""
-
-      if (provider === "kakao") {
-        const clientId = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID
-        authUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-          redirectUri
-        )}&response_type=code`
-      } else {
-        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-        authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-          redirectUri
-        )}&response_type=code&scope=openid%20email%20profile`
-      }
+      const authUrl = buildAuthUrl(provider)
 
       if (messageHandlerRef.current) {
         window.removeEventListener("message", messageHandlerRef.current)
@@ -74,34 +98,58 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
       popupRef.current = popup
 
       const handleMessage = async (event: MessageEvent) => {
-        if (event.origin !== frontendBaseUrl) return
-        if (!event.data || typeof event.data !== "object") return
+        console.log("[login] message received", {
+          origin: event.origin,
+          data: event.data,
+          currentOrigin: window.location.origin,
+          provider,
+        })
 
-        const expectedSuccessType = `${provider}LoginSuccess`
-        const expectedErrorType = `${provider}LoginError`
-        const messageType = event.data.type
+        if (event.origin !== window.location.origin) {
+          console.log("[login] origin mismatch")
+          return
+        }
 
-        if (messageType !== expectedSuccessType && messageType !== expectedErrorType) {
+        if (!event.data || typeof event.data !== "object") {
+          console.log("[login] invalid event data")
+          return
+        }
+
+        if (event.data.type !== "oauthCallback") {
+          console.log("[login] unexpected type")
+          return
+        }
+
+        if (event.data.provider !== provider) {
+          console.log("[login] provider mismatch")
           return
         }
 
         try {
-          if (messageType === expectedErrorType) {
-            const errorMessage =
+          console.log("[login] callback accepted")
+
+          if (event.data.error) {
+            console.log("[login] callback error", event.data.error)
+            alert(
               typeof event.data.error === "string"
                 ? event.data.error
-                : "소셜 로그인에 실패했습니다."
-            alert(errorMessage)
+                : "소셜 로그인에 실패했어."
+            )
             return
           }
 
           const code =
             typeof event.data.code === "string" ? event.data.code : null
 
+          console.log("[login] code =", code)
+
           if (!code) {
             alert("인가 코드를 받지 못했어.")
             return
           }
+
+          const redirectUri = getRedirectUri(provider)
+          console.log("[login] exchanging code", { provider, redirectUri })
 
           const oauthResult = await apiClient.oauthLogin(
             provider,
@@ -109,154 +157,131 @@ export default function LoginScreen({ onNavigate }: LoginScreenProps) {
             redirectUri
           )
 
+          console.log("[login] oauthResult =", oauthResult)
+
           if (!oauthResult?.access_token) {
             alert("로그인 토큰을 받지 못했어.")
             return
           }
 
-          localStorage.setItem("access_token", oauthResult.access_token)
+          const statePayload = parseOAuthState(
+            typeof event.data.state === "string" ? event.data.state : ""
+          )
 
-          // ✅ 토큰 저장 후 바로 홈으로 가지 말고 인증 확인
-          await apiClient.getMe()
+          storeAccessToken(
+            oauthResult.access_token,
+            statePayload?.rememberMe ?? rememberMe
+          )
 
+          clearSignupDraft()
+
+          console.log("[login] token stored, moving to /home")
           window.location.replace("/home")
         } catch (error: any) {
-          console.error("OAuth exchange error:", error)
-
-          localStorage.removeItem("access_token")
-
-          const message =
-            typeof error?.message === "string"
-              ? error.message
-              : "로그인 처리 중 오류가 발생했어."
-
-          alert(message)
+          console.error("[login] OAuth login error:", error)
+          alert(error?.message || "로그인 처리 중 오류가 발생했어.")
         } finally {
-          cleanupMessageHandler()
+          cleanup()
           setIsLoading(null)
         }
       }
 
       messageHandlerRef.current = handleMessage
       window.addEventListener("message", handleMessage)
-    } catch (error) {
-      console.error("OAuth login error:", error)
-      cleanupMessageHandler()
+    } catch (error: any) {
+      console.error("OAuth start error:", error)
+      cleanup()
       setIsLoading(null)
-      alert("로그인 중 오류가 발생했습니다.")
+      alert(error?.message || "로그인 중 오류가 발생했어.")
     }
   }
 
   return (
-    <div
-      className="flex flex-col items-center justify-between h-full px-6 pt-16 pb-10"
-      style={{ background: "#F8F6F2" }}
-    >
-      <div className="flex items-center gap-1.5">
-        <div className="w-2 h-2 rounded-full" style={{ background: "#F2C4A8" }} />
-        <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#F4C97A" }} />
-        <div className="w-2 h-2 rounded-full" style={{ background: "#B8D8C8" }} />
+    <div className="min-h-screen bg-[#F8F6F2] px-6 pt-10 pb-6 flex flex-col">
+      <div className="flex items-center justify-center gap-1.5 mb-6">
+        <div className="h-2 w-2 rounded-full" style={{ background: "#F2C4A8" }} />
+        <div className="h-1.5 w-1.5 rounded-full" style={{ background: "#F4C97A" }} />
+        <div className="h-2 w-2 rounded-full" style={{ background: "#B8D8C8" }} />
       </div>
 
-      <div className="flex flex-col items-center flex-1 justify-center gap-7 w-full">
+      <div className="flex flex-col items-center">
         <div
-          className="relative w-60 h-60 rounded-3xl overflow-hidden"
+          className="relative h-52 w-52 overflow-hidden rounded-3xl"
           style={{ boxShadow: "0 8px 32px rgba(201,133,106,0.15)" }}
         >
           <Image
             src="/images/haedori-room.jpg"
-            alt="해도리의 아늑한 방"
+            alt="해도리 로그인"
             fill
             className="object-cover"
           />
-          <div
-            className="absolute inset-0 rounded-3xl"
-            style={{
-              background:
-                "linear-gradient(to bottom, transparent 55%, rgba(248,246,242,0.25))",
-            }}
-          />
         </div>
 
-        <div className="text-center space-y-2">
+        <div className="space-y-2 text-center mt-6">
           <p className="text-sm font-semibold" style={{ color: "#C9856A" }}>
-            안녕하세요
+            다시 만나서 반가워요
           </p>
           <h1
-            className="text-[1.6rem] font-extrabold leading-snug text-balance"
+            className="text-[1.6rem] font-extrabold leading-snug"
             style={{ color: "#3D3530" }}
           >
-            해도리와 하루를
+            로그인하고
             <br />
-            시작해볼까요?
+            오늘의 하루를 이어가요
           </h1>
-          <p
-            className="text-sm leading-relaxed"
-            style={{ color: "#9A8F87" }}
-          >
-            오늘의 감정을 기록하고, 나를 돌아봐요
+          <p className="text-sm leading-relaxed" style={{ color: "#9A8F87" }}>
+            원하는 계정으로 간편하게 로그인해요
           </p>
         </div>
       </div>
 
-      <div className="w-full space-y-3">
+      <div className="w-full mt-16 space-y-3">
         <button
           onClick={() => handleOAuthLogin("kakao")}
           disabled={isLoading !== null}
-          className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-[0.95rem] transition-all active:scale-[0.97] disabled:opacity-50"
+          className="w-full rounded-2xl py-4 text-[0.95rem] font-bold transition-all active:scale-[0.97] disabled:opacity-50"
           style={{
             background: "#F4C97A",
             color: "#3D3530",
             boxShadow: "0 3px 12px rgba(244,201,122,0.4)",
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 3C6.477 3 2 6.477 2 10.5c0 2.542 1.583 4.785 3.999 6.19L5 21l4.667-2.333C10.4 18.89 11.19 19 12 19c5.523 0 10-3.477 10-7.5S17.523 3 12 3z" />
-          </svg>
-          {isLoading === "kakao" ? "로그인 중..." : "카카오로 시작하기"}
+          {isLoading === "kakao" ? "카카오 로그인 중..." : "카카오 로그인"}
         </button>
 
         <button
           onClick={() => handleOAuthLogin("google")}
           disabled={isLoading !== null}
-          className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-[0.95rem] transition-all active:scale-[0.97] disabled:opacity-50"
+          className="w-full rounded-2xl border py-4 text-[0.95rem] font-bold transition-all active:scale-[0.97] disabled:opacity-50"
           style={{
             background: "#FFFCF8",
             color: "#3D3530",
-            border: "1.5px solid #E5DDD5",
+            borderColor: "#E5DDD5",
             boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-          </svg>
-          {isLoading === "google" ? "로그인 중..." : "구글로 시작하기"}
+          {isLoading === "google" ? "구글 로그인 중..." : "구글 로그인"}
         </button>
 
-        <button
-          onClick={() => onNavigate("home")}
-          className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-[0.95rem] transition-all active:scale-[0.97]"
-          style={{
-            background: "#EDE8E0",
-            color: "#3D3530",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="2" y="4" width="20" height="16" rx="3" />
-            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-          </svg>
-          이메일로 시작하기
-        </button>
+        <label className="flex items-center gap-2 px-1 pt-1">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="h-4 w-4"
+          />
+          <span className="text-sm text-[#5C514B]">로그인 유지</span>
+        </label>
 
-        <p className="text-center text-xs pt-2 leading-relaxed" style={{ color: "#C4B8B0" }}>
-          로그인하면{" "}
-          <span style={{ borderBottom: "1px solid #C4B8B0" }}>개인정보처리방침</span> 및{" "}
-          <span style={{ borderBottom: "1px solid #C4B8B0" }}>이용약관</span>에 동의하는 것으로 간주됩니다
-        </p>
+        <div className="text-center pt-1">
+          <button
+            type="button"
+            onClick={() => router.push("/signup")}
+            className="text-sm font-medium text-[#C9856A] underline underline-offset-2"
+          >
+            회원가입하기
+          </button>
+        </div>
       </div>
     </div>
   )
