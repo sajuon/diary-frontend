@@ -1,0 +1,76 @@
+{
+  "request_id": "room_base_m_qwen_v1",
+  "input": {
+    "text": "empty pastel cozy isometric room shell for a small otter world, matching a cute storybook bedroom illustration while keeping the room empty",
+    "image_path": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/composite_clean.png"
+  },
+  "style": {
+    "mode": "hybrid",
+    "category": "isometric_room",
+    "locked_camera": "isometric_single_asset",
+    "consistency_level": "strict",
+    "negative_tags": [
+      "photorealistic",
+      "hard shadows",
+      "thick outlines",
+      "realistic textures",
+      "grim tone",
+      "furniture",
+      "windows",
+      "doors",
+      "characters",
+      "clutter",
+      "broken perspective",
+      "paper-thin walls",
+      "flat floor plane",
+      "notched outer edge"
+    ],
+    "core_prompts_path": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/qwen_style_prompt.txt",
+    "preset_prompts_path": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/qwen_style_prompt.txt"
+  },
+  "scene_constraints": {
+    "asset_resolution": 1024,
+    "output_static_mesh_format": "glb",
+    "preserve_palette": true,
+    "preserve_view": true,
+    "preserve_line_weight": true,
+    "allow_room_extension": false
+  },
+  "quality_gates": {
+    "min_style_score": 0.82,
+    "max_style_retries": 1
+  },
+  "pipeline": {
+    "candidate_count_2d": 1,
+    "stop_after_2d": true,
+    "two_d_backend": "qwen_edit_gguf",
+    "enable_flip_variants": false,
+    "template_pack": {
+      "enabled": false,
+      "pack_id": "room_builder_reference_v1"
+    }
+  },
+  "asset_plan": [
+    {
+      "asset_id": "square_room_base_m",
+      "name": "square room base m",
+      "kind": "structure",
+      "prompt_2d": "empty square isometric room shell only, cute pastel storybook room style, no furniture, no windows, no doors, no decorations, preserve a stable square floor footprint, preserve visible wall thickness, preserve visible thin cuboid floor slab, clean centered composition",
+      "prompt_is_final": true,
+      "placement_anchor": "scene_root",
+      "count": 1,
+      "reconstruct_3d": false,
+      "rig": false,
+      "animate": false,
+      "animation_prompts": [],
+      "template_resolution": "exact",
+      "resolved_template_id": "square_room_base_m",
+      "resolved_template_category": "structure",
+      "template_source_path": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/qwen_template_pack/square_room_base_m/composite_clean.png",
+      "template_mask_path": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/qwen_template_pack/square_room_base_m/composite_clean_mask.png",
+      "template_edge_path": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/qwen_template_pack/square_room_base_m/composite_clean_edge.png",
+      "template_symmetry": "none",
+      "template_instruction": "Preserve the template silhouette, outer occupancy, empty room geometry, wall thickness, and floor slab thickness. Do not introduce furniture, windows, doors, or edge cutouts."
+    }
+  ]
+}

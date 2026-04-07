@@ -1,0 +1,39 @@
+{
+  "size_id": "M",
+  "image": {
+    "width": 1024,
+    "height": 1024,
+    "base_image": "/home/uturtle/repos/assets_builder_repo/ChatGPT Image Apr 2, 2026, 10_48_54 AM.png"
+  },
+  "grid": {
+    "cols": 10,
+    "rows": 10
+  },
+  "placement": {
+    "projection": "bilinear_quad",
+    "quad_order": [
+      "back",
+      "right",
+      "front",
+      "left"
+    ],
+    "target_quad": [
+      [
+        512.0,
+        514.0
+      ],
+      [
+        805.0,
+        651.0
+      ],
+      [
+        512.0,
+        777.0
+      ],
+      [
+        219.0,
+        651.0
+      ]
+    ]
+  }
+}

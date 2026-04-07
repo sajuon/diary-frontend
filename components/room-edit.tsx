@@ -1,20 +1,29 @@
+// diary-frontend/components/room-edit.tsx
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
+import {
+  ROOM_SIZES,
+  clampGridPosition,
+  floorCellToPoint,
+  getCellFootprintQuad,
+  inferWallDirectionByColumn,
+  isGridRectOverlapping,
+  loadRoomLayout,
+  type RoomLayout,
+  type RoomSize,
+} from "@/data/roomLayout"
+import {
+  furnitureMeta,
+  getFurnitureImageUrl,
+  type FurnitureDirection,
+  type FurnitureKey,
+} from "@/data/furnitureMeta"
 
 interface RoomEditProps {
   onEditModeChange?: (isEditing: boolean) => void
   purchases?: any[]
-}
-
-interface FurnitureItem {
-  id: string
-  label: string
-  x: number
-  y: number
-  size: number
-  emoji: string
 }
 
 type InventoryCategory =
@@ -33,6 +42,19 @@ type InventoryItem = {
   emoji: string
   ownedCount: number
   placeable: boolean
+  furnitureKey?: FurnitureKey
+}
+
+type PlacedFurnitureItem = {
+  id: string
+  furnitureKey: FurnitureKey
+  label: string
+  col: number
+  row: number
+  colSpan: number
+  rowSpan: number
+  direction: FurnitureDirection
+  scale: number
 }
 
 const ROOM_HEIGHT = 310
@@ -42,38 +64,161 @@ const INVENTORY_DEFAULT_HEIGHT = 180
 const INVENTORY_MAX_HEIGHT = 560
 const EDIT_LAYOUT_HEIGHT = ROOM_HEIGHT + EDIT_BAR_HEIGHT + INVENTORY_MIN_HEIGHT
 
-const initialFurniture: FurnitureItem[] = [
-  { id: "desk", label: "책상", x: 30, y: 55, size: 52, emoji: "🪑" },
-  { id: "shelf", label: "선반", x: 68, y: 30, size: 44, emoji: "📚" },
-  { id: "window", label: "창문", x: 50, y: 15, size: 40, emoji: "🪟" },
-  { id: "plant", label: "식물", x: 82, y: 62, size: 36, emoji: "🪴" },
-  { id: "lamp", label: "조명", x: 18, y: 30, size: 34, emoji: "💡" },
-]
-
 const inventoryMetaByBackendId: Record<
   number,
   Omit<InventoryItem, "ownedCount">
 > = {
-  1: { id: "fn1", backendId: 1, name: "원목 책상", category: "furniture", emoji: "🪑", placeable: true },
-  2: { id: "fn2", backendId: 2, name: "빈백 소파", category: "furniture", emoji: "🛋️", placeable: true },
-  3: { id: "fn3", backendId: 3, name: "별모양 램프", category: "furniture", emoji: "⭐", placeable: true },
-  4: { id: "fn4", backendId: 4, name: "미니 책장", category: "furniture", emoji: "📚", placeable: true },
-  5: { id: "fn5", backendId: 5, name: "둥근 침대", category: "furniture", emoji: "🛏️", placeable: true },
-  6: { id: "fn6", backendId: 6, name: "창문 커튼", category: "furniture", emoji: "🪟", placeable: true },
+  1: {
+    id: "fn1",
+    backendId: 1,
+    name: "원목 책상",
+    category: "furniture",
+    emoji: "🪑",
+    placeable: true,
+    furnitureKey: "accentChair",
+  },
+  2: {
+    id: "fn2",
+    backendId: 2,
+    name: "빈백 소파",
+    category: "furniture",
+    emoji: "🛋️",
+    placeable: true,
+    furnitureKey: "sofa",
+  },
+  3: {
+    id: "fn3",
+    backendId: 3,
+    name: "별모양 램프",
+    category: "furniture",
+    emoji: "⭐",
+    placeable: true,
+    furnitureKey: "accentChair",
+  },
+  4: {
+    id: "fn4",
+    backendId: 4,
+    name: "미니 책장",
+    category: "furniture",
+    emoji: "📚",
+    placeable: true,
+    furnitureKey: "bookshelf",
+  },
+  5: {
+    id: "fn5",
+    backendId: 5,
+    name: "둥근 침대",
+    category: "furniture",
+    emoji: "🛏️",
+    placeable: true,
+    furnitureKey: "bed",
+  },
+  6: {
+    id: "fn6",
+    backendId: 6,
+    name: "창문 커튼",
+    category: "furniture",
+    emoji: "🪟",
+    placeable: false,
+  },
 
-  7: { id: "dc1", backendId: 7, name: "해달 인형", category: "deco", emoji: "🦦", placeable: true },
-  8: { id: "dc2", backendId: 8, name: "미니 화분", category: "deco", emoji: "🌱", placeable: true },
-  9: { id: "dc3", backendId: 9, name: "무지개 모빌", category: "deco", emoji: "🌈", placeable: true },
-  10: { id: "dc4", backendId: 10, name: "달 거울", category: "deco", emoji: "🌙", placeable: true },
-  11: { id: "dc5", backendId: 11, name: "리본 액자", category: "deco", emoji: "🎀", placeable: true },
-  12: { id: "dc6", backendId: 12, name: "초 세트", category: "deco", emoji: "🕯️", placeable: true },
+  7: {
+    id: "dc1",
+    backendId: 7,
+    name: "해달 인형",
+    category: "deco",
+    emoji: "🦦",
+    placeable: false,
+  },
+  8: {
+    id: "dc2",
+    backendId: 8,
+    name: "미니 화분",
+    category: "deco",
+    emoji: "🌱",
+    placeable: false,
+  },
+  9: {
+    id: "dc3",
+    backendId: 9,
+    name: "무지개 모빌",
+    category: "deco",
+    emoji: "🌈",
+    placeable: false,
+  },
+  10: {
+    id: "dc4",
+    backendId: 10,
+    name: "달 거울",
+    category: "deco",
+    emoji: "🌙",
+    placeable: false,
+  },
+  11: {
+    id: "dc5",
+    backendId: 11,
+    name: "리본 액자",
+    category: "deco",
+    emoji: "🎀",
+    placeable: false,
+  },
+  12: {
+    id: "dc6",
+    backendId: 12,
+    name: "초 세트",
+    category: "deco",
+    emoji: "🕯️",
+    placeable: false,
+  },
 
-  13: { id: "fd1", backendId: 13, name: "딸기 케이크", category: "food", emoji: "🍓", placeable: false },
-  14: { id: "fd2", backendId: 14, name: "마카롱 세트", category: "food", emoji: "🍬", placeable: false },
-  15: { id: "fd3", backendId: 15, name: "버블티", category: "food", emoji: "🧋", placeable: false },
-  16: { id: "fd4", backendId: 16, name: "귤 바구니", category: "food", emoji: "🍊", placeable: false },
-  17: { id: "fd5", backendId: 17, name: "꿀단지", category: "food", emoji: "🍯", placeable: false },
-  18: { id: "fd6", backendId: 18, name: "쿠키 상자", category: "food", emoji: "🍪", placeable: false },
+  13: {
+    id: "fd1",
+    backendId: 13,
+    name: "딸기 케이크",
+    category: "food",
+    emoji: "🍓",
+    placeable: false,
+  },
+  14: {
+    id: "fd2",
+    backendId: 14,
+    name: "마카롱 세트",
+    category: "food",
+    emoji: "🍬",
+    placeable: false,
+  },
+  15: {
+    id: "fd3",
+    backendId: 15,
+    name: "버블티",
+    category: "food",
+    emoji: "🧋",
+    placeable: false,
+  },
+  16: {
+    id: "fd4",
+    backendId: 16,
+    name: "귤 바구니",
+    category: "food",
+    emoji: "🍊",
+    placeable: false,
+  },
+  17: {
+    id: "fd5",
+    backendId: 17,
+    name: "꿀단지",
+    category: "food",
+    emoji: "🍯",
+    placeable: false,
+  },
+  18: {
+    id: "fd6",
+    backendId: 18,
+    name: "쿠키 상자",
+    category: "food",
+    emoji: "🍪",
+    placeable: false,
+  },
 }
 
 const inventoryCategories: { id: InventoryCategory; label: string; icon: string }[] = [
@@ -109,14 +254,111 @@ function buildInventoryFromPurchases(purchases: any[] = []): InventoryItem[] {
     .sort((a, b) => a.backendId - b.backendId)
 }
 
+function getDefaultPlacedItems(): PlacedFurnitureItem[] {
+  const chairMeta = furnitureMeta.accentChair
+  const shelfMeta = furnitureMeta.bookshelf
+
+  return [
+    {
+      id: "placed-1",
+      furnitureKey: "accentChair",
+      label: chairMeta.label,
+      col: 2,
+      row: 5,
+      colSpan: chairMeta.gridW,
+      rowSpan: chairMeta.gridH,
+      direction: "left",
+      scale: chairMeta.defaultScale,
+    },
+    {
+      id: "placed-2",
+      furnitureKey: "bookshelf",
+      label: shelfMeta.label,
+      col: 0,
+      row: 1,
+      colSpan: shelfMeta.gridW,
+      rowSpan: shelfMeta.gridH,
+      direction: "left",
+      scale: shelfMeta.defaultScale,
+    },
+  ]
+}
+
+function getPointerPositionInElement(
+  clientX: number,
+  clientY: number,
+  element: HTMLElement,
+) {
+  const rect = element.getBoundingClientRect()
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function pickNearestCell(
+  layout: RoomLayout,
+  x: number,
+  y: number,
+  colSpan = 1,
+  rowSpan = 1,
+) {
+  let best: { col: number; row: number; distance: number } | null = null
+
+  for (let row = 0; row <= layout.placement.rows - rowSpan; row += 1) {
+    for (let col = 0; col <= layout.placement.cols - colSpan; col += 1) {
+      const point = floorCellToPoint(layout, col, row, 0.5, 1.0, colSpan, rowSpan)
+      const dx = point.x - x
+      const dy = point.y - y
+      const distance = dx * dx + dy * dy
+
+      if (!best || distance < best.distance) {
+        best = { col, row, distance }
+      }
+    }
+  }
+
+  return best
+}
+
+function canPlaceItem(
+  nextItem: PlacedFurnitureItem,
+  placed: PlacedFurnitureItem[],
+  ignoreId?: string,
+) {
+  return !placed.some((item) => {
+    if (item.id === ignoreId) return false
+
+    return isGridRectOverlapping(
+      {
+        col: nextItem.col,
+        row: nextItem.row,
+        colSpan: nextItem.colSpan,
+        rowSpan: nextItem.rowSpan,
+      },
+      {
+        col: item.col,
+        row: item.row,
+        colSpan: item.colSpan,
+        rowSpan: item.rowSpan,
+      },
+    )
+  })
+}
+
 export default function RoomEdit({
   onEditModeChange,
   purchases = [],
 }: RoomEditProps) {
   const [editMode, setEditMode] = useState(false)
-  const [furniture, setFurniture] = useState<FurnitureItem[]>(initialFurniture)
-  const [savedFurniture, setSavedFurniture] = useState<FurnitureItem[]>(initialFurniture)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [roomSize, setRoomSize] = useState<RoomSize>("M")
+  const [roomLayout, setRoomLayout] = useState<RoomLayout | null>(null)
+
+  const [furniture, setFurniture] = useState<PlacedFurnitureItem[]>(getDefaultPlacedItems())
+  const [savedFurniture, setSavedFurniture] = useState<PlacedFurnitureItem[]>(getDefaultPlacedItems())
 
   const [selectedInventoryCategory, setSelectedInventoryCategory] =
     useState<InventoryCategory>("all")
@@ -133,8 +375,6 @@ export default function RoomEdit({
 
   const draggingRef = useRef<{
     id: string
-    offsetX: number
-    offsetY: number
   } | null>(null)
 
   const inventoryItems = useMemo(() => {
@@ -144,6 +384,23 @@ export default function RoomEdit({
   useEffect(() => {
     onEditModeChange?.(editMode)
   }, [editMode, onEditModeChange])
+
+  useEffect(() => {
+    let mounted = true
+
+    loadRoomLayout(roomSize)
+      .then((layout) => {
+        if (!mounted) return
+        setRoomLayout(layout)
+      })
+      .catch((error) => {
+        console.error("room layout load error", error)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [roomSize])
 
   useEffect(() => {
     if (!editMode) {
@@ -170,29 +427,15 @@ export default function RoomEdit({
   const selectedInventoryItem =
     inventoryItems.find((item) => item.id === selectedInventoryId) ?? null
 
-  const isSelectedItemPlaceable = !!selectedInventoryItem?.placeable
+  const isSelectedItemPlaceable =
+    !!selectedInventoryItem?.placeable && !!selectedInventoryItem?.furnitureKey
 
   const handlePointerDown = (e: React.PointerEvent, id: string) => {
-    if (!editMode || isInventoryResizing) return
+    if (!editMode || isInventoryResizing || !roomLayout) return
 
     e.preventDefault()
     setSelectedId(id)
-
-    const rect = roomRef.current?.getBoundingClientRect()
-    if (!rect) return
-
-    const item = furniture.find((f) => f.id === id)
-    if (!item) return
-
-    const itemPixelX = (item.x / 100) * rect.width
-    const itemPixelY = (item.y / 100) * rect.height
-
-    draggingRef.current = {
-      id,
-      offsetX: e.clientX - rect.left - itemPixelX,
-      offsetY: e.clientY - rect.top - itemPixelY,
-    }
-
+    draggingRef.current = { id }
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
 
@@ -202,30 +445,52 @@ export default function RoomEdit({
       const nextHeight = clamp(
         inventoryResizeRef.current.startHeight + deltaY,
         INVENTORY_MIN_HEIGHT,
-        INVENTORY_MAX_HEIGHT
+        INVENTORY_MAX_HEIGHT,
       )
       setInventoryHeight(nextHeight)
       return
     }
 
-    if (!draggingRef.current || !roomRef.current) return
+    if (!draggingRef.current || !roomRef.current || !roomLayout) return
 
-    const rect = roomRef.current.getBoundingClientRect()
-    const newX =
-      ((e.clientX - rect.left - draggingRef.current.offsetX) / rect.width) * 100
-    const newY =
-      ((e.clientY - rect.top - draggingRef.current.offsetY) / rect.height) * 100
+    const pointer = getPointerPositionInElement(e.clientX, e.clientY, roomRef.current)
+    const scaleX = roomLayout.renderWidth / pointer.width
+    const scaleY = roomLayout.renderHeight / pointer.height
+    const sceneX = pointer.x * scaleX
+    const sceneY = pointer.y * scaleY
+
+    const targetItem = furniture.find((item) => item.id === draggingRef.current?.id)
+    if (!targetItem) return
+
+    const nearest = pickNearestCell(
+      roomLayout,
+      sceneX,
+      sceneY,
+      targetItem.colSpan,
+      targetItem.rowSpan,
+    )
+
+    if (!nearest) return
+
+    const clamped = clampGridPosition(
+      roomLayout,
+      nearest.col,
+      nearest.row,
+      targetItem.colSpan,
+      targetItem.rowSpan,
+    )
+
+    const nextItem: PlacedFurnitureItem = {
+      ...targetItem,
+      col: clamped.col,
+      row: clamped.row,
+      direction: inferWallDirectionByColumn(roomLayout, clamped.col, targetItem.colSpan),
+    }
+
+    if (!canPlaceItem(nextItem, furniture, targetItem.id)) return
 
     setFurniture((prev) =>
-      prev.map((f) =>
-        f.id === draggingRef.current!.id
-          ? {
-              ...f,
-              x: Math.min(90, Math.max(5, newX)),
-              y: Math.min(85, Math.max(5, newY)),
-            }
-          : f
-      )
+      prev.map((item) => (item.id === targetItem.id ? nextItem : item)),
     )
   }
 
@@ -266,6 +531,48 @@ export default function RoomEdit({
     setInventoryHeight(INVENTORY_DEFAULT_HEIGHT)
   }
 
+  const handlePlaceSelectedInventory = () => {
+    if (!selectedInventoryItem?.furnitureKey || !roomLayout) return
+
+    const meta = furnitureMeta[selectedInventoryItem.furnitureKey]
+    const defaultCol = Math.floor((roomLayout.placement.cols - meta.gridW) / 2)
+    const defaultRow = Math.floor((roomLayout.placement.rows - meta.gridH) / 2)
+
+    const clamped = clampGridPosition(
+      roomLayout,
+      defaultCol,
+      defaultRow,
+      meta.gridW,
+      meta.gridH,
+    )
+
+    const newItem: PlacedFurnitureItem = {
+      id: `placed-${Date.now()}`,
+      furnitureKey: selectedInventoryItem.furnitureKey,
+      label: meta.label,
+      col: clamped.col,
+      row: clamped.row,
+      colSpan: meta.gridW,
+      rowSpan: meta.gridH,
+      direction: inferWallDirectionByColumn(roomLayout, clamped.col, meta.gridW),
+      scale: meta.defaultScale,
+    }
+
+    if (!canPlaceItem(newItem, furniture)) {
+      alert("해당 위치에 이미 다른 가구가 있어요.")
+      return
+    }
+
+    setFurniture((prev) => [...prev, newItem])
+    setSelectedId(newItem.id)
+  }
+
+  const handleDeleteSelected = () => {
+    if (!selectedId) return
+    setFurniture((prev) => prev.filter((item) => item.id !== selectedId))
+    setSelectedId(null)
+  }
+
   return (
     <>
       <div
@@ -284,93 +591,97 @@ export default function RoomEdit({
           className="relative w-full overflow-hidden"
           style={{ height: `${ROOM_HEIGHT}px` }}
         >
-          <Image
-            src="/images/haedori-room.jpg"
-            alt="해도리의 방"
-            fill
-            className="object-cover"
-          />
+          {roomLayout ? (
+            <>
+              <Image
+                src={roomLayout.cleanImageUrl}
+                alt="해도리의 방"
+                fill
+                className="object-cover"
+                priority
+              />
 
-          {editMode && (
-            <div
-              className="absolute inset-0"
-              style={{
-                backgroundImage:
-                  "radial-gradient(circle, rgba(201,133,106,0.25) 1.5px, transparent 1.5px)",
-                backgroundSize: "24px 24px",
-              }}
-            />
+              {editMode && (
+                <Image
+                  src={roomLayout.gridOverlayUrl}
+                  alt="room grid"
+                  fill
+                  className="object-cover pointer-events-none"
+                />
+              )}
+            </>
+          ) : (
+            <div className="absolute inset-0 bg-[#F4EEE8]" />
           )}
 
           <div ref={roomRef} className="absolute inset-0">
-            {editMode &&
-              furniture.map((item) => (
-                <div
-                  key={item.id}
-                  onPointerDown={(e) => handlePointerDown(e, item.id)}
-                  className="absolute flex flex-col items-center cursor-grab active:cursor-grabbing select-none"
-                  style={{
-                    left: `${item.x}%`,
-                    top: `${item.y}%`,
-                    transform: "translate(-50%, -50%)",
-                    zIndex: selectedId === item.id ? 20 : 10,
-                  }}
-                >
+            {roomLayout &&
+              furniture.map((item) => {
+                const meta = furnitureMeta[item.furnitureKey]
+                const point = floorCellToPoint(
+                  roomLayout,
+                  item.col,
+                  item.row,
+                  meta.anchorU,
+                  meta.anchorV,
+                  item.colSpan,
+                  item.rowSpan,
+                )
+
+                const footprint = getCellFootprintQuad(
+                  roomLayout,
+                  item.col,
+                  item.row,
+                  item.colSpan,
+                  item.rowSpan,
+                )
+
+                const footprintWidth =
+                  Math.max(...footprint.map((p) => p.x)) -
+                  Math.min(...footprint.map((p) => p.x))
+
+                const renderedWidth = Math.max(44, footprintWidth * 0.95 * item.scale)
+                const renderedHeight = renderedWidth * 1.2
+                const imageUrl = getFurnitureImageUrl(item.furnitureKey, item.direction)
+
+                return (
                   <div
-                    className="relative rounded-2xl flex items-center justify-center text-2xl transition-all"
+                    key={item.id}
+                    onPointerDown={(e) => handlePointerDown(e, item.id)}
+                    className={`absolute select-none ${
+                      editMode ? "cursor-grab active:cursor-grabbing" : ""
+                    }`}
                     style={{
-                      width: item.size,
-                      height: item.size,
-                      background:
-                        selectedId === item.id
-                          ? "rgba(255,252,248,0.96)"
-                          : "rgba(255,252,248,0.82)",
-                      border:
-                        selectedId === item.id
-                          ? "2px dashed #C9856A"
-                          : "1.5px dashed rgba(201,133,106,0.4)",
-                      boxShadow:
-                        selectedId === item.id
-                          ? "0 4px 16px rgba(201,133,106,0.25)"
-                          : "none",
+                      left: `${(point.x / roomLayout.renderWidth) * 100}%`,
+                      top: `${(point.y / roomLayout.renderHeight) * 100}%`,
+                      width: renderedWidth,
+                      height: renderedHeight,
+                      transform: "translate(-50%, -100%)",
+                      zIndex: selectedId === item.id ? 20 : 10 + item.row,
                     }}
                   >
-                    {item.emoji}
+                    <div className="relative w-full h-full">
+                      <Image
+                        src={imageUrl}
+                        alt={item.label}
+                        fill
+                        className="object-contain pointer-events-none"
+                        sizes="160px"
+                      />
+                    </div>
 
-                    {selectedId === item.id && (
+                    {editMode && selectedId === item.id && (
                       <div
-                        className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center"
-                        style={{ background: "#C9856A" }}
-                      >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#FFFCF8"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M21.5 2.5l-7 7M14.5 9.5l-4 1 1-4 7-7M3 21l5-1.5L3 15l-1.5 5L3 21z" />
-                        </svg>
-                      </div>
+                        className="absolute inset-0 rounded-2xl pointer-events-none"
+                        style={{
+                          border: "2px dashed #C9856A",
+                          background: "rgba(255,252,248,0.12)",
+                        }}
+                      />
                     )}
                   </div>
-
-                  <span
-                    className="text-xs font-bold mt-1 px-1.5 py-0.5 rounded-lg"
-                    style={{
-                      background: "rgba(255,252,248,0.9)",
-                      color: "#3D3530",
-                      fontSize: "10px",
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </div>
-              ))}
+                )
+              })}
           </div>
 
           {!editMode && (
@@ -415,12 +726,45 @@ export default function RoomEdit({
                 borderTop: "1.5px solid #E5DDD5",
               }}
             >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
-                  가구를 드래그해 배치하세요
-                </p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
+                    가구를 드래그해 배치하세요
+                  </p>
+
+                  <div className="flex items-center gap-1.5">
+                    {ROOM_SIZES.map((size) => {
+                      const active = roomSize === size
+                      return (
+                        <button
+                          key={size}
+                          onClick={() => setRoomSize(size)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold"
+                          style={{
+                            background: active ? "#C9856A" : "#EDE8E0",
+                            color: active ? "#FFFCF8" : "#3D3530",
+                          }}
+                        >
+                          {size}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
 
                 <div className="flex gap-2">
+                  <button
+                    onClick={handleDeleteSelected}
+                    disabled={!selectedId}
+                    className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+                    style={{
+                      background: selectedId ? "#D96C6C" : "#D8D0C8",
+                      color: "#FFFCF8",
+                      opacity: selectedId ? 1 : 0.6,
+                    }}
+                  >
+                    삭제
+                  </button>
                   <button
                     onClick={handleCancel}
                     className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
@@ -605,7 +949,7 @@ export default function RoomEdit({
                   </div>
 
                   <div
-                    className="mt-3 px-3 py-2.5 rounded-2xl flex items-center justify-between"
+                    className="mt-3 px-3 py-2.5 rounded-2xl flex items-center justify-between gap-3"
                     style={{
                       background: "rgba(255,252,248,0.7)",
                       border: "1px solid rgba(229,221,213,0.9)",
@@ -628,6 +972,7 @@ export default function RoomEdit({
                     <button
                       type="button"
                       disabled={!selectedInventoryItem || !isSelectedItemPlaceable}
+                      onClick={handlePlaceSelectedInventory}
                       className="ml-3 px-3.5 py-2 rounded-xl text-xs font-bold transition-all"
                       style={{
                         background:
@@ -647,7 +992,7 @@ export default function RoomEdit({
                       {!selectedInventoryItem
                         ? "배치 연결 예정"
                         : isSelectedItemPlaceable
-                          ? "배치 연결 예정"
+                          ? "방에 놓기"
                           : "배치 불가"}
                     </button>
                   </div>

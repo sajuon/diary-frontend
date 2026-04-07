@@ -1,0 +1,88 @@
+{
+  "size_id": "M",
+  "grid": {
+    "cols": 10,
+    "rows": 10,
+    "cell_size_world": 1.0
+  },
+  "room": {
+    "floor_size_world": 10.0,
+    "wall_height_world": 4.6,
+    "wall_thickness_world": 0.28,
+    "trim_height_world": 0.22,
+    "trim_depth_world": 0.12,
+    "floor_slab_thickness_world": 0.5
+  },
+  "camera": {
+    "projection": "orthographic",
+    "distance_world": 12.5,
+    "height_world": 9.5,
+    "ortho_scale": 19.0
+  },
+  "validation": {
+    "character_type": "small_otter_sd",
+    "baseline_loadout": [
+      "desk",
+      "seat",
+      "single_bed",
+      "storage"
+    ],
+    "baseline_footprints_cells": {
+      "desk": [
+        2,
+        3
+      ],
+      "seat": [
+        1,
+        1
+      ],
+      "single_bed": [
+        3,
+        5
+      ],
+      "storage": [
+        2,
+        2
+      ]
+    },
+    "center_free_zone_cells": [
+      2,
+      2
+    ]
+  },
+  "placement": {
+    "projection": "bilinear_quad",
+    "quad_order": [
+      "back",
+      "right",
+      "front",
+      "left"
+    ],
+    "normalized_floor_inner_quad": [
+      [
+        0.5,
+        0.54
+      ],
+      [
+        0.84,
+        0.71
+      ],
+      [
+        0.5,
+        0.88
+      ],
+      [
+        0.16,
+        0.71
+      ]
+    ]
+  },
+  "outputs": {
+    "wall_shell": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/wall_shell.png",
+    "floor_base": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/floor_base.png",
+    "grid_overlay": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/grid_overlay.png",
+    "composite_clean": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/composite_clean.png",
+    "composite_preview": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/composite_preview.png",
+    "layout_manifest": "/home/uturtle/repos/assets_builder_repo/.work/room_base_generation_pack/M/layout_manifest.json"
+  }
+}
