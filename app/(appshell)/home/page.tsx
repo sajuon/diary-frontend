@@ -1,14 +1,15 @@
+// /home/dori/diary-frontend/app/(appshell)/home/page.tsx
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import HomeScreen from "@/components/home-screen"
 import { apiClient, ApiError } from "@/lib/api"
 
 type BirthProfile = {
   birth_date?: string
   birth_time?: string
-  birth_place?: string   // 추가
+  birth_place?: string
 } | null
 
 type DashboardLetter = {
@@ -53,6 +54,12 @@ type PurchaseItem = {
   [key: string]: unknown
 }
 
+function getKstTodayString() {
+  const now = new Date()
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  return kst.toISOString().slice(0, 10)
+}
+
 export default function HomePage() {
   const router = useRouter()
 
@@ -63,6 +70,36 @@ export default function HomePage() {
 
   const [loading, setLoading] = useState(true)
   const [isFortuneLoading, setIsFortuneLoading] = useState(false)
+
+  const API_BASE_URL = useMemo(() => process.env.NEXT_PUBLIC_API_URL || "", [])
+
+  const loadSavedTodayFortune = async (token: string) => {
+    const today = getKstTodayString()
+
+    const res = await fetch(
+      `${API_BASE_URL}/api/fortune?from_date=${today}&to_date=${today}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: "include",
+        cache: "no-store",
+      }
+    )
+
+    if (!res.ok) {
+      throw new Error("저장된 오늘의 흐름을 불러오지 못했습니다.")
+    }
+
+    const fortunes = (await res.json()) as TodayFortune[]
+
+    if (Array.isArray(fortunes) && fortunes.length > 0) {
+      return fortunes[0]
+    }
+
+    return null
+  }
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -79,12 +116,17 @@ export default function HomePage() {
 
         await apiClient.getMe()
 
-        const [dashboardResult, purchasesResult, profileResult] =
-          await Promise.allSettled([
-            apiClient.getDashboard(),
-            apiClient.getUserPurchases(),
-            apiClient.getBirthProfile(),
-          ])
+        const [
+          dashboardResult,
+          purchasesResult,
+          profileResult,
+          savedTodayFortuneResult,
+        ] = await Promise.allSettled([
+          apiClient.getDashboard(),
+          apiClient.getUserPurchases(),
+          apiClient.getBirthProfile(),
+          loadSavedTodayFortune(token),
+        ])
 
         if (dashboardResult.status === "fulfilled") {
           setDashboardData(dashboardResult.value as DashboardData)
@@ -105,6 +147,16 @@ export default function HomePage() {
           console.error("Failed to load profile:", profileResult.reason)
           setProfile(null)
         }
+
+        if (savedTodayFortuneResult.status === "fulfilled") {
+          setTodayFortune(savedTodayFortuneResult.value as TodayFortune)
+        } else {
+          console.error(
+            "Failed to load saved today fortune:",
+            savedTodayFortuneResult.reason
+          )
+          setTodayFortune(null)
+        }
       } catch (error: any) {
         console.error("Failed to load home:", error)
 
@@ -121,10 +173,14 @@ export default function HomePage() {
     }
 
     loadDashboard()
-  }, [router])
+  }, [router, API_BASE_URL])
 
   const handleOpenTodayFlow = async () => {
     if (isFortuneLoading) return false
+
+    if (todayFortune) {
+      return true
+    }
 
     try {
       setIsFortuneLoading(true)
@@ -133,8 +189,7 @@ export default function HomePage() {
       setTodayFortune(fortune as TodayFortune)
       return true
     } catch (error: any) {
-      const message =
-        error?.message || "오늘의 하루를 불러오지 못했어요."
+      const message = error?.message || "오늘의 하루를 불러오지 못했어요."
 
       if (typeof message === "string" && message.includes("생년월일")) {
         alert("생년월일을 먼저 등록해주세요.")

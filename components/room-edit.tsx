@@ -11,6 +11,7 @@ import {
   inferWallDirectionByColumn,
   isGridRectOverlapping,
   loadRoomLayout,
+  type Point,
   type RoomLayout,
   type RoomSize,
 } from "@/data/roomLayout"
@@ -254,32 +255,29 @@ function buildInventoryFromPurchases(purchases: any[] = []): InventoryItem[] {
     .sort((a, b) => a.backendId - b.backendId)
 }
 
+function getEffectiveSpan(key: FurnitureKey) {
+  const meta = furnitureMeta[key]
+  return {
+    colSpan: meta.gridW,
+    rowSpan: meta.gridH,
+  }
+}
+
 function getDefaultPlacedItems(): PlacedFurnitureItem[] {
   const chairMeta = furnitureMeta.accentChair
-  const shelfMeta = furnitureMeta.bookshelf
+  const chairSpan = getEffectiveSpan("accentChair")
 
   return [
     {
       id: "placed-1",
       furnitureKey: "accentChair",
       label: chairMeta.label,
-      col: 2,
-      row: 5,
-      colSpan: chairMeta.gridW,
-      rowSpan: chairMeta.gridH,
-      direction: "left",
-      scale: chairMeta.defaultScale,
-    },
-    {
-      id: "placed-2",
-      furnitureKey: "bookshelf",
-      label: shelfMeta.label,
       col: 0,
-      row: 1,
-      colSpan: shelfMeta.gridW,
-      rowSpan: shelfMeta.gridH,
-      direction: "left",
-      scale: shelfMeta.defaultScale,
+      row: 0,
+      colSpan: chairSpan.colSpan,
+      rowSpan: chairSpan.rowSpan,
+      direction: "right",
+      scale: chairMeta.defaultScale,
     },
   ]
 }
@@ -296,31 +294,6 @@ function getPointerPositionInElement(
     width: rect.width,
     height: rect.height,
   }
-}
-
-function pickNearestCell(
-  layout: RoomLayout,
-  x: number,
-  y: number,
-  colSpan = 1,
-  rowSpan = 1,
-) {
-  let best: { col: number; row: number; distance: number } | null = null
-
-  for (let row = 0; row <= layout.placement.rows - rowSpan; row += 1) {
-    for (let col = 0; col <= layout.placement.cols - colSpan; col += 1) {
-      const point = floorCellToPoint(layout, col, row, 0.5, 1.0, colSpan, rowSpan)
-      const dx = point.x - x
-      const dy = point.y - y
-      const distance = dx * dx + dy * dy
-
-      if (!best || distance < best.distance) {
-        best = { col, row, distance }
-      }
-    }
-  }
-
-  return best
 }
 
 function canPlaceItem(
@@ -348,6 +321,286 @@ function canPlaceItem(
   })
 }
 
+function togglePlacedFurnitureDirection(
+  layout: RoomLayout,
+  item: PlacedFurnitureItem,
+): PlacedFurnitureItem {
+  const meta = furnitureMeta[item.furnitureKey]
+
+  if (!meta.directions.includes("left")) {
+    return item
+  }
+
+  if (meta.wallAttachable) {
+    const nextDirection = item.direction === "right" ? "left" : "right"
+    const nextCol =
+      nextDirection === "left"
+        ? 0
+        : layout.placement.cols - item.colSpan
+
+    return {
+      ...item,
+      direction: nextDirection,
+      col: nextCol,
+    }
+  }
+
+  return {
+    ...item,
+    direction: item.direction === "right" ? "left" : "right",
+  }
+}
+
+function getAllowedGridPosition(
+  layout: RoomLayout,
+  item: PlacedFurnitureItem,
+  col: number,
+  row: number,
+) {
+  const base = clampGridPosition(layout, col, row, item.colSpan, item.rowSpan)
+  const meta = furnitureMeta[item.furnitureKey]
+
+  if (meta.wallAttachable) {
+    const fixedDirection =
+      item.direction ?? inferWallDirectionByColumn(layout, base.col, item.colSpan)
+
+    if (fixedDirection === "left") {
+      return {
+        col: 0,
+        row: clamp(base.row, 0, layout.placement.rows - item.rowSpan),
+      }
+    }
+
+    return {
+      col: layout.placement.cols - item.colSpan,
+      row: clamp(base.row, 0, layout.placement.rows - item.rowSpan),
+    }
+  }
+
+  return {
+    col: base.col,
+    row: clamp(base.row, 0, layout.placement.rows - item.rowSpan),
+  }
+}
+
+function getSpriteAnchor(item: PlacedFurnitureItem) {
+  const meta = furnitureMeta[item.furnitureKey]
+  const baseX = meta.spriteAnchorXRatio ?? 0.5
+  const baseY = meta.spriteAnchorYRatio ?? 1
+
+  if (item.furnitureKey === "accentChair") {
+    if (item.direction === "left") {
+      return {
+        x: 0.66,
+        y: 0.73,
+      }
+    }
+
+    return {
+      x: 0.34,
+      y: 0.73,
+    }
+  }
+
+  return {
+    x: item.direction === "left" ? 1 - baseX : baseX,
+    y: baseY,
+  }
+}
+
+function getVisualSize(item: PlacedFurnitureItem, layout: RoomLayout) {
+  const quad = getCellFootprintQuad(
+    layout,
+    item.col,
+    item.row,
+    item.colSpan,
+    item.rowSpan,
+  )
+
+  const backLeft = quad[0]
+  const backRight = quad[1]
+  const frontRight = quad[2]
+  const frontLeft = quad[3]
+
+  const bottomWidth = distance(frontLeft, frontRight)
+  const leftDepth = distance(backLeft, frontLeft)
+  const rightDepth = distance(backRight, frontRight)
+  const avgDepth = (leftDepth + rightDepth) / 2
+
+  if (item.furnitureKey === "accentChair") {
+    return {
+      width: Math.max(34, bottomWidth * 0.78 * item.scale),
+      height: Math.max(62, avgDepth * 1.58 * item.scale),
+    }
+  }
+
+  if (item.furnitureKey === "sofa") {
+    return {
+      width: Math.max(54, bottomWidth * 1.02 * item.scale),
+      height: Math.max(76, avgDepth * 2.0 * item.scale),
+    }
+  }
+
+  if (item.furnitureKey === "bed") {
+    return {
+      width: Math.max(74, bottomWidth * 1.04 * item.scale),
+      height: Math.max(92, avgDepth * 1.9 * item.scale),
+    }
+  }
+
+  if (item.furnitureKey === "bookshelf") {
+    return {
+      width: Math.max(44, bottomWidth * 0.92 * item.scale),
+      height: Math.max(120, avgDepth * 3.2 * item.scale),
+    }
+  }
+
+  return {
+    width: Math.max(40, bottomWidth * 0.95 * item.scale),
+    height: Math.max(80, avgDepth * 2.2 * item.scale),
+  }
+}
+
+function getFootprintAnchorPoint(
+  layout: RoomLayout,
+  item: PlacedFurnitureItem,
+): Point {
+  const meta = furnitureMeta[item.furnitureKey]
+
+  if (meta.wallAttachable) {
+    return floorCellToPoint(
+      layout,
+      item.col,
+      item.row,
+      item.direction === "left" ? 0 : 1,
+      1,
+      item.colSpan,
+      item.rowSpan,
+    )
+  }
+
+  if (item.furnitureKey === "accentChair") {
+    return floorCellToPoint(layout, item.col, item.row, 0, 0, item.colSpan, item.rowSpan)
+  }
+
+  let anchorU =
+    item.direction === "left"
+      ? 1 - (meta.anchorU ?? 0.5)
+      : (meta.anchorU ?? 0.5)
+
+  const anchorV = meta.anchorV ?? 1
+
+  return floorCellToPoint(
+    layout,
+    item.col,
+    item.row,
+    anchorU,
+    anchorV,
+    item.colSpan,
+    item.rowSpan,
+  )
+}
+
+function getPlacementReferencePoint(
+  layout: RoomLayout,
+  item: PlacedFurnitureItem,
+): Point {
+  const meta = furnitureMeta[item.furnitureKey]
+
+  if (meta.wallAttachable) {
+    return floorCellToPoint(
+      layout,
+      item.col,
+      item.row,
+      item.direction === "left" ? 0 : 1,
+      0,
+      item.colSpan,
+      item.rowSpan,
+    )
+  }
+
+  if (item.furnitureKey === "accentChair") {
+    return floorCellToPoint(layout, item.col, item.row, 0, 0, item.colSpan, item.rowSpan)
+  }
+
+  return floorCellToPoint(layout, item.col, item.row, 0.5, 0.5, item.colSpan, item.rowSpan)
+}
+
+function getPlacementReferencePointForCell(
+  layout: RoomLayout,
+  item: PlacedFurnitureItem,
+  col: number,
+  row: number,
+): Point {
+  const meta = furnitureMeta[item.furnitureKey]
+
+  if (meta.wallAttachable) {
+    return floorCellToPoint(
+      layout,
+      col,
+      row,
+      item.direction === "left" ? 0 : 1,
+      0,
+      item.colSpan,
+      item.rowSpan,
+    )
+  }
+
+  if (item.furnitureKey === "accentChair") {
+    return floorCellToPoint(layout, col, row, 0, 0, item.colSpan, item.rowSpan)
+  }
+
+  return floorCellToPoint(layout, col, row, 0.5, 0.5, item.colSpan, item.rowSpan)
+}
+
+function pickNearestCell(
+  layout: RoomLayout,
+  x: number,
+  y: number,
+  item: PlacedFurnitureItem,
+) {
+  let best: { col: number; row: number; distance: number } | null = null
+
+  for (let row = 0; row <= layout.placement.rows - item.rowSpan; row += 1) {
+    for (let col = 0; col <= layout.placement.cols - item.colSpan; col += 1) {
+      const point = getPlacementReferencePointForCell(layout, item, col, row)
+      const dx = point.x - x
+      const dy = point.y - y
+      const distance = dx * dx + dy * dy
+
+      if (!best || distance < best.distance) {
+        best = { col, row, distance }
+      }
+    }
+  }
+
+  return best
+}
+
+function getFloorBounds(layout: RoomLayout) {
+  const quad = getCellFootprintQuad(
+    layout,
+    0,
+    0,
+    layout.placement.cols,
+    layout.placement.rows,
+  )
+
+  const xs = quad.map((point) => point.x)
+  const ys = quad.map((point) => point.y)
+
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  }
+}
+
+function distance(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
 export default function RoomEdit({
   onEditModeChange,
   purchases = [],
@@ -357,8 +610,12 @@ export default function RoomEdit({
   const [roomSize, setRoomSize] = useState<RoomSize>("M")
   const [roomLayout, setRoomLayout] = useState<RoomLayout | null>(null)
 
-  const [furniture, setFurniture] = useState<PlacedFurnitureItem[]>(getDefaultPlacedItems())
-  const [savedFurniture, setSavedFurniture] = useState<PlacedFurnitureItem[]>(getDefaultPlacedItems())
+  const [furniture, setFurniture] = useState<PlacedFurnitureItem[]>(
+    getDefaultPlacedItems(),
+  )
+  const [savedFurniture, setSavedFurniture] = useState<PlacedFurnitureItem[]>(
+    getDefaultPlacedItems(),
+  )
 
   const [selectedInventoryCategory, setSelectedInventoryCategory] =
     useState<InventoryCategory>("all")
@@ -375,11 +632,30 @@ export default function RoomEdit({
 
   const draggingRef = useRef<{
     id: string
+    offsetX: number
+    offsetY: number
   } | null>(null)
 
   const inventoryItems = useMemo(() => {
     return buildInventoryFromPurchases(purchases)
   }, [purchases])
+
+  const filteredInventory = useMemo(() => {
+    if (selectedInventoryCategory === "all") return inventoryItems
+    return inventoryItems.filter((item) => item.category === selectedInventoryCategory)
+  }, [inventoryItems, selectedInventoryCategory])
+
+  const selectedInventoryItem =
+    inventoryItems.find((item) => item.id === selectedInventoryId) ?? null
+
+  const isSelectedItemPlaceable =
+    !!selectedInventoryItem?.placeable && !!selectedInventoryItem?.furnitureKey
+
+  const selectedPlacedFurniture =
+    furniture.find((item) => item.id === selectedId) ?? null
+
+  const selectedPlacedFurnitureMeta =
+    selectedPlacedFurniture ? furnitureMeta[selectedPlacedFurniture.furnitureKey] : null
 
   useEffect(() => {
     onEditModeChange?.(editMode)
@@ -419,24 +695,27 @@ export default function RoomEdit({
     }
   }, [inventoryItems, selectedInventoryId])
 
-  const filteredInventory = useMemo(() => {
-    if (selectedInventoryCategory === "all") return inventoryItems
-    return inventoryItems.filter((item) => item.category === selectedInventoryCategory)
-  }, [inventoryItems, selectedInventoryCategory])
-
-  const selectedInventoryItem =
-    inventoryItems.find((item) => item.id === selectedInventoryId) ?? null
-
-  const isSelectedItemPlaceable =
-    !!selectedInventoryItem?.placeable && !!selectedInventoryItem?.furnitureKey
-
   const handlePointerDown = (e: React.PointerEvent, id: string) => {
-    if (!editMode || isInventoryResizing || !roomLayout) return
+    if (!editMode || isInventoryResizing || !roomLayout || !roomRef.current) return
 
     e.preventDefault()
     setSelectedId(id)
-    draggingRef.current = { id }
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+
+    const targetItem = furniture.find((item) => item.id === id)
+    if (!targetItem) return
+
+    const pointer = getPointerPositionInElement(e.clientX, e.clientY, roomRef.current)
+    const sceneX = (pointer.x / pointer.width) * roomLayout.renderWidth
+    const sceneY = (pointer.y / pointer.height) * roomLayout.renderHeight
+    const placementPoint = getPlacementReferencePoint(roomLayout, targetItem)
+
+    draggingRef.current = {
+      id,
+      offsetX: sceneX - placementPoint.x,
+      offsetY: sceneY - placementPoint.y,
+    }
+
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -454,37 +733,34 @@ export default function RoomEdit({
     if (!draggingRef.current || !roomRef.current || !roomLayout) return
 
     const pointer = getPointerPositionInElement(e.clientX, e.clientY, roomRef.current)
-    const scaleX = roomLayout.renderWidth / pointer.width
-    const scaleY = roomLayout.renderHeight / pointer.height
-    const sceneX = pointer.x * scaleX
-    const sceneY = pointer.y * scaleY
+    const sceneX = (pointer.x / pointer.width) * roomLayout.renderWidth
+    const sceneY = (pointer.y / pointer.height) * roomLayout.renderHeight
 
     const targetItem = furniture.find((item) => item.id === draggingRef.current?.id)
     if (!targetItem) return
 
-    const nearest = pickNearestCell(
-      roomLayout,
-      sceneX,
-      sceneY,
-      targetItem.colSpan,
-      targetItem.rowSpan,
-    )
+    const refX = sceneX - draggingRef.current.offsetX
+    const refY = sceneY - draggingRef.current.offsetY
 
+    const nearest = pickNearestCell(roomLayout, refX, refY, targetItem)
     if (!nearest) return
 
-    const clamped = clampGridPosition(
+    const allowed = getAllowedGridPosition(
       roomLayout,
+      targetItem,
       nearest.col,
       nearest.row,
-      targetItem.colSpan,
-      targetItem.rowSpan,
     )
+
+    const nextDirection = furnitureMeta[targetItem.furnitureKey].wallAttachable
+      ? inferWallDirectionByColumn(roomLayout, allowed.col, targetItem.colSpan)
+      : targetItem.direction
 
     const nextItem: PlacedFurnitureItem = {
       ...targetItem,
-      col: clamped.col,
-      row: clamped.row,
-      direction: inferWallDirectionByColumn(roomLayout, clamped.col, targetItem.colSpan),
+      col: allowed.col,
+      row: allowed.row,
+      direction: nextDirection,
     }
 
     if (!canPlaceItem(nextItem, furniture, targetItem.id)) return
@@ -535,27 +811,40 @@ export default function RoomEdit({
     if (!selectedInventoryItem?.furnitureKey || !roomLayout) return
 
     const meta = furnitureMeta[selectedInventoryItem.furnitureKey]
-    const defaultCol = Math.floor((roomLayout.placement.cols - meta.gridW) / 2)
-    const defaultRow = Math.floor((roomLayout.placement.rows - meta.gridH) / 2)
+    const span = getEffectiveSpan(selectedInventoryItem.furnitureKey)
 
-    const clamped = clampGridPosition(
-      roomLayout,
-      defaultCol,
-      defaultRow,
-      meta.gridW,
-      meta.gridH,
-    )
+    const defaultCol = 0
+    const defaultRow = 0
 
-    const newItem: PlacedFurnitureItem = {
+    const initialDirection = meta.wallAttachable
+      ? inferWallDirectionByColumn(roomLayout, defaultCol, span.colSpan)
+      : meta.directions.includes("left")
+        ? "left"
+        : "right"
+
+    const newItemBase: PlacedFurnitureItem = {
       id: `placed-${Date.now()}`,
       furnitureKey: selectedInventoryItem.furnitureKey,
       label: meta.label,
-      col: clamped.col,
-      row: clamped.row,
-      colSpan: meta.gridW,
-      rowSpan: meta.gridH,
-      direction: inferWallDirectionByColumn(roomLayout, clamped.col, meta.gridW),
+      col: defaultCol,
+      row: defaultRow,
+      colSpan: span.colSpan,
+      rowSpan: span.rowSpan,
+      direction: initialDirection,
       scale: meta.defaultScale,
+    }
+
+    const allowed = getAllowedGridPosition(
+      roomLayout,
+      newItemBase,
+      newItemBase.col,
+      newItemBase.row,
+    )
+
+    const newItem: PlacedFurnitureItem = {
+      ...newItemBase,
+      col: allowed.col,
+      row: allowed.row,
     }
 
     if (!canPlaceItem(newItem, furniture)) {
@@ -571,6 +860,36 @@ export default function RoomEdit({
     if (!selectedId) return
     setFurniture((prev) => prev.filter((item) => item.id !== selectedId))
     setSelectedId(null)
+  }
+
+  const handleRotateSelected = () => {
+    if (!selectedId || !roomLayout) return
+
+    const target = furniture.find((item) => item.id === selectedId)
+    if (!target) return
+
+    const toggled = togglePlacedFurnitureDirection(roomLayout, target)
+    const allowed = getAllowedGridPosition(
+      roomLayout,
+      toggled,
+      toggled.col,
+      toggled.row,
+    )
+
+    const rotatedItem: PlacedFurnitureItem = {
+      ...toggled,
+      col: allowed.col,
+      row: allowed.row,
+    }
+
+    if (!canPlaceItem(rotatedItem, furniture, target.id)) {
+      alert("방향을 바꾸면 다른 가구와 겹쳐요.")
+      return
+    }
+
+    setFurniture((prev) =>
+      prev.map((item) => (item.id === selectedId ? rotatedItem : item)),
+    )
   }
 
   return (
@@ -594,19 +913,20 @@ export default function RoomEdit({
           {roomLayout ? (
             <>
               <Image
-                src={roomLayout.cleanImageUrl}
-                alt="해도리의 방"
+                src={roomLayout.floorBaseUrl}
+                alt="floor"
                 fill
-                className="object-cover"
+                className="pointer-events-none"
+                style={{ objectFit: "fill" }}
                 priority
               />
-
               {editMode && (
                 <Image
                   src={roomLayout.gridOverlayUrl}
                   alt="room grid"
                   fill
-                  className="object-cover pointer-events-none"
+                  className="pointer-events-none"
+                  style={{ objectFit: "fill" }}
                 />
               )}
             </>
@@ -614,35 +934,30 @@ export default function RoomEdit({
             <div className="absolute inset-0 bg-[#F4EEE8]" />
           )}
 
-          <div ref={roomRef} className="absolute inset-0">
+          {roomLayout && (
+            <Image
+              src={roomLayout.wallShellUrl}
+              alt="walls"
+              fill
+              className="pointer-events-none"
+              style={{ objectFit: "fill", zIndex: 6 }}
+            />
+          )}
+
+          <div ref={roomRef} className="absolute inset-0" style={{ zIndex: 20 }}>
             {roomLayout &&
               furniture.map((item) => {
-                const meta = furnitureMeta[item.furnitureKey]
-                const point = floorCellToPoint(
-                  roomLayout,
-                  item.col,
-                  item.row,
-                  meta.anchorU,
-                  meta.anchorV,
-                  item.colSpan,
-                  item.rowSpan,
-                )
-
-                const footprint = getCellFootprintQuad(
-                  roomLayout,
-                  item.col,
-                  item.row,
-                  item.colSpan,
-                  item.rowSpan,
-                )
-
-                const footprintWidth =
-                  Math.max(...footprint.map((p) => p.x)) -
-                  Math.min(...footprint.map((p) => p.x))
-
-                const renderedWidth = Math.max(44, footprintWidth * 0.95 * item.scale)
-                const renderedHeight = renderedWidth * 1.2
                 const imageUrl = getFurnitureImageUrl(item.furnitureKey, item.direction)
+                const rendered = getVisualSize(item, roomLayout)
+                const spriteAnchor = getSpriteAnchor(item)
+                const footprintPoint = getFootprintAnchorPoint(roomLayout, item)
+                const floorBounds = getFloorBounds(roomLayout)
+
+                let left = footprintPoint.x - rendered.width * spriteAnchor.x
+                let top = footprintPoint.y - rendered.height * spriteAnchor.y
+
+                left = clamp(left, floorBounds.minX - rendered.width * 0.2, floorBounds.maxX - rendered.width * 0.8)
+                top = Math.min(top, floorBounds.maxY - rendered.height * 0.28)
 
                 return (
                   <div
@@ -652,12 +967,11 @@ export default function RoomEdit({
                       editMode ? "cursor-grab active:cursor-grabbing" : ""
                     }`}
                     style={{
-                      left: `${(point.x / roomLayout.renderWidth) * 100}%`,
-                      top: `${(point.y / roomLayout.renderHeight) * 100}%`,
-                      width: renderedWidth,
-                      height: renderedHeight,
-                      transform: "translate(-50%, -100%)",
-                      zIndex: selectedId === item.id ? 20 : 10 + item.row,
+                      left: `${(left / roomLayout.renderWidth) * 100}%`,
+                      top: `${(top / roomLayout.renderHeight) * 100}%`,
+                      width: rendered.width,
+                      height: rendered.height,
+                      zIndex: selectedId === item.id ? 50 : 40 + item.row + item.rowSpan,
                     }}
                   >
                     <div className="relative w-full h-full">
@@ -669,16 +983,6 @@ export default function RoomEdit({
                         sizes="160px"
                       />
                     </div>
-
-                    {editMode && selectedId === item.id && (
-                      <div
-                        className="absolute inset-0 rounded-2xl pointer-events-none"
-                        style={{
-                          border: "2px dashed #C9856A",
-                          background: "rgba(255,252,248,0.12)",
-                        }}
-                      />
-                    )}
                   </div>
                 )
               })}
@@ -693,6 +997,7 @@ export default function RoomEdit({
                 color: "#3D3530",
                 backdropFilter: "blur(8px)",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                zIndex: 60,
               }}
             >
               <svg
@@ -752,7 +1057,34 @@ export default function RoomEdit({
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
+                  <button
+                    onClick={handleRotateSelected}
+                    disabled={
+                      !selectedPlacedFurniture ||
+                      !selectedPlacedFurnitureMeta ||
+                      !selectedPlacedFurnitureMeta.directions.includes("left")
+                    }
+                    className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+                    style={{
+                      background:
+                        selectedPlacedFurniture &&
+                        selectedPlacedFurnitureMeta &&
+                        selectedPlacedFurnitureMeta.directions.includes("left")
+                          ? "#8C7CF0"
+                          : "#D8D0C8",
+                      color: "#FFFCF8",
+                      opacity:
+                        selectedPlacedFurniture &&
+                        selectedPlacedFurnitureMeta &&
+                        selectedPlacedFurnitureMeta.directions.includes("left")
+                          ? 1
+                          : 0.6,
+                    }}
+                  >
+                    방향 전환
+                  </button>
+
                   <button
                     onClick={handleDeleteSelected}
                     disabled={!selectedId}
@@ -765,6 +1097,7 @@ export default function RoomEdit({
                   >
                     삭제
                   </button>
+
                   <button
                     onClick={handleCancel}
                     className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
@@ -772,6 +1105,7 @@ export default function RoomEdit({
                   >
                     취소
                   </button>
+
                   <button
                     onClick={handleSave}
                     className="px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"

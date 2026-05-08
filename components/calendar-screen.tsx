@@ -534,7 +534,7 @@ export default function CalendarScreen({
             해도리 편지함
           </button>
 
-          <button
+          {/*<button
             onClick={handleBatchSummaryGenerate}
             disabled={batchSummaryLoading}
             className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -564,7 +564,7 @@ export default function CalendarScreen({
             {batchSummaryLoading
               ? "태그 없는 일기 전체 요약 중..."
               : "태그 없는 일기 전체 요약하기"}
-          </button>
+          </button>*/}
 
           {batchSummaryMessage && (
             <div
