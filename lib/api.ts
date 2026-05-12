@@ -1,4 +1,5 @@
 // /home/dori/diary-frontend/lib/api.ts
+
 import {
   clearAccessToken,
   getStoredAccessToken,
@@ -23,6 +24,13 @@ type BirthProfilePayload = {
   birth_place?: string | null
   sex?: string | null
   timezone?: string | null
+}
+
+type DiaryPayload = {
+  entry_date?: string
+  content: string
+  weather: string
+  mood_tags: string[]
 }
 
 class ApiClient {
@@ -51,9 +59,7 @@ class ApiClient {
   }
 
   private async refreshAccessToken(): Promise<string | null> {
-    if (this.refreshPromise) {
-      return this.refreshPromise
-    }
+    if (this.refreshPromise) return this.refreshPromise
 
     this.refreshPromise = (async () => {
       try {
@@ -117,15 +123,13 @@ class ApiClient {
       const newAccessToken = await this.refreshAccessToken()
 
       if (newAccessToken) {
-        const retryHeaders: Record<string, string> = {
-          "Content-Type": "application/json",
-          ...(options.headers as Record<string, string>),
-          Authorization: `Bearer ${newAccessToken}`,
-        }
-
         response = await fetch(url, {
           ...options,
-          headers: retryHeaders,
+          headers: {
+            "Content-Type": "application/json",
+            ...(options.headers as Record<string, string>),
+            Authorization: `Bearer ${newAccessToken}`,
+          },
           credentials: "include",
         })
       }
@@ -150,9 +154,7 @@ class ApiClient {
   }
 
   async get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: "GET",
-    })
+    return this.request<T>(endpoint, { method: "GET" })
   }
 
   async post<T>(endpoint: string, body?: unknown): Promise<T> {
@@ -177,9 +179,7 @@ class ApiClient {
   }
 
   async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: "DELETE",
-    })
+    return this.request<T>(endpoint, { method: "DELETE" })
   }
 
   async login(email: string, password: string) {
@@ -256,26 +256,15 @@ class ApiClient {
     }>("/api/diary/question")
   }
 
-  async createDiary(data: {
-    content: string
-    weather: string
-    mood_tags: string[]
-  }) {
+  async createDiary(data: DiaryPayload) {
     return this.post("/api/diary/today", data)
   }
 
-  async updateTodayDiary(data: {
-    content: string
-    weather: string
-    mood_tags: string[]
-  }) {
+  async updateTodayDiary(data: DiaryPayload) {
     return this.put("/api/diary/today", data)
   }
 
-  async updateDiary(
-    date: string,
-    data: { content: string; weather: string; mood_tags: string[] }
-  ) {
+  async updateDiary(date: string, data: DiaryPayload) {
     return this.put(`/api/diary/date/${date}`, data)
   }
 
@@ -335,6 +324,13 @@ class ApiClient {
     const query = params.toString() ? `?${params.toString()}` : ""
 
     return this.post(`/api/letters/generate${query}`)
+  }
+
+  async generateLetterWithPearl(targetDate: string) {
+    const params = new URLSearchParams()
+    params.set("target_date", targetDate)
+
+    return this.post(`/api/letters/generate-with-pearl?${params.toString()}`)
   }
 
   async generateTodayLetter() {

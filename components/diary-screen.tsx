@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
 import {
@@ -9,7 +10,7 @@ import {
 } from "@/lib/diary-cache"
 
 interface DiaryScreenProps {
-  onNavigate: (screen: string) => void
+  onNavigate: (screen: string, params?: Record<string, unknown>) => void
 }
 
 type DiarySaveResponse = {
@@ -41,7 +42,34 @@ const moods = [
   { id: "excited", label: "설렘", icon: "🥰", color: "#F2C4A8" },
 ]
 
+function getTodayDateString() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, "0")
+  const day = String(now.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function isValidDateString(value: string | null) {
+  if (!value) return false
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function formatKoreanDate(dateString: string) {
+  const [year, month, day] = dateString.split("-")
+  return `${Number(month)}월 ${Number(day)}일 일기`
+}
+
 export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
+  const searchParams = useSearchParams()
+
+  const selectedDate = useMemo(() => {
+    const dateParam = searchParams.get("date")
+    return isValidDateString(dateParam) ? dateParam! : getTodayDateString()
+  }, [searchParams])
+
+  const isToday = selectedDate === getTodayDateString()
+
   const [isEdit, setIsEdit] = useState(false)
   const [canEdit, setCanEdit] = useState(true)
 
@@ -56,12 +84,22 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
 
   useEffect(() => {
     const now = new Date()
-    setCanEdit(now.getHours() < 23)
-  }, [])
+    setCanEdit(isToday ? now.getHours() < 23 : true)
+  }, [isToday])
 
   useEffect(() => {
-    async function fetchTodayDiary() {
+    async function fetchDiary() {
       try {
+        setError(null)
+
+        if (!isToday) {
+          setIsEdit(false)
+          setText("")
+          setSelectedWeather("sunny")
+          setSelectedMood("calm")
+          return
+        }
+
         const data = (await apiClient.getTodayDiary()) as {
           content?: string
           weather?: string
@@ -86,12 +124,12 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           return
         }
 
-        setError(message || "오늘 일기를 불러오지 못했어요.")
+        setError(message || "일기를 불러오지 못했어요.")
       }
     }
 
-    fetchTodayDiary()
-  }, [])
+    fetchDiary()
+  }, [isToday, selectedDate])
 
   useEffect(() => {
     if (activeTab !== "question") return
@@ -114,9 +152,10 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
         if (cancelled) return
 
         setQuestion(
-          data?.question?.trim() || "오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?"
+          data?.question?.trim() ||
+            "오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?"
         )
-      } catch (e) {
+      } catch {
         if (cancelled) return
         setQuestion("오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?")
       } finally {
@@ -158,7 +197,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
     try {
       let saved: DiarySaveResponse
 
-      if (isEdit) {
+      if (isEdit && isToday) {
         saved = (await apiClient.updateTodayDiary({
           content: text,
           weather: selectedWeather,
@@ -166,13 +205,14 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
         })) as DiarySaveResponse
       } else {
         saved = (await apiClient.createDiary({
+          entry_date: selectedDate,
           content: text,
           weather: selectedWeather,
           mood_tags: [selectedMood],
-        })) as DiarySaveResponse
+        } as any)) as DiarySaveResponse
       }
 
-      const entryDate = saved?.entry_date || new Date().toISOString()
+      const entryDate = saved?.entry_date || selectedDate
       const monthKey = getDiaryMonthKeyFromDate(entryDate)
       invalidateDiaryMonth(monthKey)
 
@@ -188,7 +228,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
     <div className="flex flex-col h-full" style={{ background: "#F8F6F2" }}>
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <button
-          onClick={() => onNavigate("home")}
+          onClick={() => onNavigate("calendar")}
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="뒤로 가기"
@@ -208,14 +248,28 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <h2
-          className="text-base font-extrabold"
-          style={{ color: "#3D3530" }}
-        >
-          오늘 일기
+
+        <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
+          {isToday ? "오늘 일기" : formatKoreanDate(selectedDate)}
         </h2>
+
         <div className="w-9" />
       </div>
+
+      {!isToday && (
+        <div className="px-5 mb-4">
+          <div
+            className="rounded-2xl px-4 py-3 text-sm font-bold"
+            style={{
+              background: "#FFFCF8",
+              color: "#8A7E76",
+              border: "1.5px solid #E5DDD5",
+            }}
+          >
+            선택한 날짜: {selectedDate}
+          </div>
+        </div>
+      )}
 
       <div className="px-5 mb-4">
         <div className="flex rounded-2xl p-1" style={{ background: "#EDE8E0" }}>
@@ -254,6 +308,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                   className="object-cover w-full h-full"
                 />
               </div>
+
               <div
                 className="relative flex-1 px-4 py-3 rounded-2xl rounded-bl-sm"
                 style={{
@@ -268,6 +323,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 >
                   {questionLoading ? "오늘의 질문을 준비하고 있어요..." : question}
                 </p>
+
                 <div
                   className="absolute left-0 bottom-3 w-0 h-0"
                   style={{
@@ -322,6 +378,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
               fontFamily: "inherit",
             }}
           />
+
           <div className="px-5 pb-3 flex justify-end">
             <span className="text-xs" style={{ color: "#C4B8B0" }}>
               {text.length}자
@@ -333,6 +390,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
             오늘 날씨
           </p>
+
           <div className="flex gap-2">
             {weathers.map((w) => (
               <button
@@ -359,8 +417,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 <span
                   className="text-xs font-semibold"
                   style={{
-                    color:
-                      selectedWeather === w.id ? "#C9856A" : "#9A8F87",
+                    color: selectedWeather === w.id ? "#C9856A" : "#9A8F87",
                   }}
                 >
                   {w.label}
@@ -374,6 +431,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
             오늘 기분
           </p>
+
           <div className="grid grid-cols-6 gap-1.5">
             {moods.map((m) => (
               <button
@@ -396,8 +454,7 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 <span
                   className="text-xs font-semibold"
                   style={{
-                    color:
-                      selectedMood === m.id ? "#3D3530" : "#9A8F87",
+                    color: selectedMood === m.id ? "#3D3530" : "#9A8F87",
                     fontSize: "10px",
                   }}
                 >
@@ -439,9 +496,9 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
             ? "저장 중..."
             : isEdit
               ? canEdit
-                ? "오늘 일기 수정하기"
+                ? "일기 수정하기"
                 : "오늘 일기 수정 마감"
-              : "오늘 일기 저장하기"}
+              : "일기 저장하기"}
         </button>
       </div>
     </div>

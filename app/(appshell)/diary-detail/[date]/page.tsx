@@ -10,7 +10,9 @@ interface DiaryDetailResponse {
   user_id: number
   entry_date: string
   content: string
+  weather?: string | null
   mood_tags?: string[]
+  summary_tag?: string | null
   created_at: string
   updated_at: string
 }
@@ -37,6 +39,31 @@ export default function DiaryDetailPage() {
   const [diary, setDiary] = useState<DiaryDetailResponse | null>(null)
   const [letter, setLetter] = useState<LetterDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [letterGenerating, setLetterGenerating] = useState(false)
+
+  const loadDiaryAndLetter = async () => {
+    try {
+      const diaryData = await apiClient.getDiaryByDate(date)
+      const typedDiary = diaryData as DiaryDetailResponse
+      setDiary(typedDiary)
+
+      const month = date.slice(0, 7)
+      const lettersData = (await apiClient.getLetters(month)) as LetterDetailResponse[]
+
+      const matchedLetter =
+        lettersData.find((item) => item.diary_entry_id === typedDiary.id) ??
+        lettersData.find((item) => item.letter_date === date) ??
+        null
+
+      setLetter(matchedLetter)
+    } catch (error) {
+      console.error("Failed to load diary detail:", error)
+      setDiary(null)
+      setLetter(null)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -44,30 +71,6 @@ export default function DiaryDetailPage() {
     if (!isValidDate) {
       router.replace("/")
       return
-    }
-
-    const loadDiaryAndLetter = async () => {
-      try {
-        const diaryData = await apiClient.getDiaryByDate(date)
-        const typedDiary = diaryData as DiaryDetailResponse
-        setDiary(typedDiary)
-
-        const month = date.slice(0, 7)
-        const lettersData = (await apiClient.getLetters(month)) as LetterDetailResponse[]
-
-        const matchedLetter =
-          lettersData.find((item) => item.diary_entry_id === typedDiary.id) ??
-          lettersData.find((item) => item.letter_date === date) ??
-          null
-
-        setLetter(matchedLetter)
-      } catch (error) {
-        console.error("Failed to load diary detail:", error)
-        setDiary(null)
-        setLetter(null)
-      } finally {
-        setLoading(false)
-      }
     }
 
     if (date) {
@@ -78,31 +81,54 @@ export default function DiaryDetailPage() {
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
-    } else if (screen === "letter-detail" && params?.letter) {
-      const letterId = (params.letter as { id?: number } | number)
-      const resolvedId =
-        typeof letterId === "object" ? letterId.id : letterId
+      return
+    }
+
+    if (screen === "letter-detail" && params?.letter) {
+      const letterId = params.letter as { id?: number } | number
+      const resolvedId = typeof letterId === "object" ? letterId.id : letterId
       router.push(`/letter-detail/${resolvedId}`)
-    } else {
-      router.push(`/${screen}`)
+      return
+    }
+
+    router.push(`/${screen}`)
+  }
+
+  const handleGenerateLetterWithPearl = async () => {
+    try {
+      setLetterGenerating(true)
+
+      const generatedLetter = (await apiClient.generateLetterWithPearl(
+        date
+      )) as LetterDetailResponse
+
+      setLetter(generatedLetter)
+
+      router.push(`/letter-detail/${generatedLetter.id}`)
+    } catch (error: any) {
+      console.error("Failed to generate letter with pearl:", error)
+      alert(error?.message || "해도리 답장 생성에 실패했습니다.")
+    } finally {
+      setLetterGenerating(false)
     }
   }
 
-  const handleUpdateDiary = async (data: { content: string; mood_tags: string[] }) => {
+  const handleUpdateDiary = async (data: {
+    content: string
+    weather?: string
+    mood_tags: string[]
+  }) => {
     try {
-      const updated = await apiClient.updateDiary(date, data)
+      const updated = await apiClient.updateDiary(date, {
+        content: data.content,
+        weather: data.weather || diary?.weather || "sunny",
+        mood_tags: data.mood_tags,
+      })
+
       const typedUpdated = updated as DiaryDetailResponse
       setDiary(typedUpdated)
 
-      const month = date.slice(0, 7)
-      const lettersData = (await apiClient.getLetters(month)) as LetterDetailResponse[]
-
-      const matchedLetter =
-        lettersData.find((item) => item.diary_entry_id === typedUpdated.id) ??
-        lettersData.find((item) => item.letter_date === date) ??
-        null
-
-      setLetter(matchedLetter)
+      await loadDiaryAndLetter()
     } catch (error) {
       console.error("Failed to update diary:", error)
       alert("일기 수정에 실패했습니다.")
@@ -123,7 +149,7 @@ export default function DiaryDetailPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto" />
           <p className="mt-4">로딩 중...</p>
         </div>
       </div>
@@ -146,6 +172,8 @@ export default function DiaryDetailPage() {
       letter={letter}
       onUpdateDiary={handleUpdateDiary}
       onDeleteDiary={handleDeleteDiary}
+      onGenerateLetterWithPearl={handleGenerateLetterWithPearl}
+      letterGenerating={letterGenerating}
     />
   )
 }

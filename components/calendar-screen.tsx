@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { apiClient, ApiError } from "@/lib/api"
+import { apiClient } from "@/lib/api"
 import {
   clearDiaryMonthInvalidation,
   isDiaryMonthInvalidated,
@@ -57,6 +57,17 @@ function formatMonth(year: number, month: number) {
   return `${year}-${month.toString().padStart(2, "0")}`
 }
 
+function formatDate(year: number, month: number, day: number) {
+  return `${year}-${month.toString().padStart(2, "0")}-${day
+    .toString()
+    .padStart(2, "0")}`
+}
+
+function getTodayDateString() {
+  const now = new Date()
+  return formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate())
+}
+
 function getDiaryLabel(entry: DiaryApiItem) {
   const summaryTag = (entry.summary_tag || "").trim()
   if (summaryTag) return summaryTag
@@ -100,14 +111,17 @@ export default function CalendarScreen({
   const [month, setMonth] = useState<number>(startMonth)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [batchSummaryLoading, setBatchSummaryLoading] = useState(false)
-  const [batchSummaryMessage, setBatchSummaryMessage] = useState<string | null>(null)
+  const [selectedEmptyDate, setSelectedEmptyDate] = useState<string | null>(
+    null
+  )
+  const [futureDate, setFutureDate] = useState<string | null>(null)
 
   const [monthCache, setMonthCache] = useState<DiaryMonthCache>({
     [initialMonthKey]: initialDiaries,
   })
 
   const targetMonthKey = formatMonth(year, month)
+  const todayDateStr = getTodayDateString()
 
   const currentMonthDiaries = useMemo(() => {
     return monthCache[targetMonthKey] ?? []
@@ -121,7 +135,10 @@ export default function CalendarScreen({
     let cancelled = false
 
     const invalidated = isDiaryMonthInvalidated(targetMonthKey)
-    const hasCache = Object.prototype.hasOwnProperty.call(monthCache, targetMonthKey)
+    const hasCache = Object.prototype.hasOwnProperty.call(
+      monthCache,
+      targetMonthKey
+    )
 
     const loadMonthDiaries = async () => {
       if (invalidated && hasCache) {
@@ -132,9 +149,7 @@ export default function CalendarScreen({
         })
       }
 
-      if (hasCache && !invalidated) {
-        return
-      }
+      if (hasCache && !invalidated) return
 
       setLoading(true)
       setError(null)
@@ -161,9 +176,7 @@ export default function CalendarScreen({
           }))
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+        if (!cancelled) setLoading(false)
       }
     }
 
@@ -181,9 +194,7 @@ export default function CalendarScreen({
       if (!monthKey) return
 
       setMonthCache((prev) => {
-        if (!Object.prototype.hasOwnProperty.call(prev, monthKey)) {
-          return prev
-        }
+        if (!Object.prototype.hasOwnProperty.call(prev, monthKey)) return prev
 
         const next = { ...prev }
         delete next[monthKey]
@@ -206,7 +217,6 @@ export default function CalendarScreen({
 
   const handlePrevMonth = () => {
     setError(null)
-    setBatchSummaryMessage(null)
 
     if (month === 1) {
       setYear((prev) => prev - 1)
@@ -218,7 +228,6 @@ export default function CalendarScreen({
 
   const handleNextMonth = () => {
     setError(null)
-    setBatchSummaryMessage(null)
 
     if (month === 12) {
       setYear((prev) => prev + 1)
@@ -228,39 +237,11 @@ export default function CalendarScreen({
     }
   }
 
-  const handleBatchSummaryGenerate = async () => {
-    try {
-      setBatchSummaryLoading(true)
-      setBatchSummaryMessage(null)
-      setError(null)
+  const handleWriteDiaryFromModal = () => {
+    if (!selectedEmptyDate) return
 
-      const result = await apiClient.generateMissingDiarySummaryTags()
-
-      setBatchSummaryMessage(
-        result?.message || `${result?.updated_count ?? 0}개의 일기를 요약했어.`
-      )
-
-      Object.keys(monthCache).forEach((monthKey) => {
-        clearDiaryMonthInvalidation(monthKey)
-      })
-
-      setMonthCache((prev) => {
-        const next = { ...prev }
-        delete next[targetMonthKey]
-        return next
-      })
-    } catch (e) {
-      const message =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : "일기 전체 요약 실패"
-
-      setBatchSummaryMessage(message)
-    } finally {
-      setBatchSummaryLoading(false)
-    }
+    onNavigate("diary", { date: selectedEmptyDate })
+    setSelectedEmptyDate(null)
   }
 
   const daysInMonth = new Date(year, month, 0).getDate()
@@ -278,7 +259,10 @@ export default function CalendarScreen({
   ]
 
   return (
-    <div className="flex flex-col h-full font-sans" style={{ background: "#F8F6F2" }}>
+    <div
+      className="relative flex flex-col h-full font-sans"
+      style={{ background: "#F8F6F2" }}
+    >
       <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
         <button
           onClick={() => onNavigate("home")}
@@ -384,38 +368,54 @@ export default function CalendarScreen({
             const isToday = isCurrentMonth && day === today
             const colIdx = idx % 7
             const hasEntry = Boolean(entry)
+            const dateStr = formatDate(year, month, day)
+            const isFutureDate = dateStr > todayDateStr
 
             return (
               <button
                 key={day}
                 onClick={() => {
-                  if (!hasEntry) return
+                  if (hasEntry) {
+                    onNavigate("diary-detail", { date: dateStr })
+                    return
+                  }
 
-                  const dateStr = `${year}-${month
-                    .toString()
-                    .padStart(2, "0")}-${day.toString().padStart(2, "0")}`
+                  if (isFutureDate) {
+                    setFutureDate(dateStr)
+                    return
+                  }
 
-                  onNavigate("diary-detail", { date: dateStr })
+                  setSelectedEmptyDate(dateStr)
                 }}
-                disabled={!hasEntry}
-                className="flex flex-col items-center rounded-2xl pt-2 pb-2.5 transition-all"
+                className="flex flex-col items-center rounded-2xl pt-2 pb-2.5 transition-all active:scale-95"
                 style={{
                   background: isToday
                     ? "#F2C4A8"
                     : hasEntry
                       ? "#FFFCF8"
-                      : "transparent",
+                      : isFutureDate
+                        ? "#ECE7E1"
+                        : "#F3EEE8",
                   border: isToday
                     ? "1.5px solid #EAAB88"
                     : hasEntry
                       ? "1.5px solid #E5DDD5"
-                      : "1.5px solid transparent",
+                      : isFutureDate
+                        ? "1.5px solid #DDD5CC"
+                        : "1.5px dashed #DED5CC",
                   boxShadow: hasEntry ? "0 1px 6px rgba(0,0,0,0.04)" : "none",
                   minHeight: hasEntry ? "72px" : "54px",
-                  cursor: hasEntry ? "pointer" : "default",
+                  cursor: "pointer",
+                  opacity: isFutureDate && !hasEntry ? 0.7 : 1,
                   WebkitTapHighlightColor: "transparent",
                 }}
-                aria-label={`${day}일${hasEntry ? ", 일기 보기" : ""}`}
+                aria-label={`${day}일${
+                  hasEntry
+                    ? ", 일기 보기"
+                    : isFutureDate
+                      ? ", 미래 날짜"
+                      : ", 일기 작성하기"
+                }`}
                 type="button"
               >
                 <span
@@ -427,13 +427,15 @@ export default function CalendarScreen({
                         ? "#F2A8A8"
                         : colIdx === 6
                           ? "#A8BBA5"
-                          : "#3D3530",
+                          : isFutureDate
+                            ? "#B8AEA6"
+                            : "#3D3530",
                   }}
                 >
                   {day}
                 </span>
 
-                {entry && (
+                {entry ? (
                   <>
                     <span className="text-sm leading-none">
                       {weatherIcons[entry.weather] || "☀️"}
@@ -460,6 +462,13 @@ export default function CalendarScreen({
                       {entry.label}
                     </span>
                   </>
+                ) : (
+                  <span
+                    className="mt-1 text-[10px] font-bold"
+                    style={{ color: isFutureDate ? "#B8AEA6" : "#C6B8AE" }}
+                  >
+                    {isFutureDate ? "·" : "+"}
+                  </span>
                 )}
               </button>
             )
@@ -481,7 +490,7 @@ export default function CalendarScreen({
 
         <div className="px-5 pb-8 flex flex-col gap-3">
           <button
-            onClick={() => onNavigate("diary")}
+            onClick={() => onNavigate("emotion-report")}
             className="w-full py-4 rounded-2xl font-extrabold text-base transition-all active:scale-[0.98] flex items-center justify-center gap-2"
             style={{
               background: "#C9856A",
@@ -501,9 +510,11 @@ export default function CalendarScreen({
               strokeLinejoin="round"
               aria-hidden="true"
             >
-              <path d="M12 5v14M5 12h14" />
+              <path d="M4 19V5" />
+              <path d="M4 19h16" />
+              <path d="M8 15l3-3 3 2 4-6" />
             </svg>
-            오늘 일기 쓰기
+            감정 리포트 확인하기
           </button>
 
           <button
@@ -517,66 +528,131 @@ export default function CalendarScreen({
             }}
             type="button"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#C9856A"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-              <polyline points="22,6 12,13 2,6" />
-            </svg>
             해도리 편지함
           </button>
+        </div>
+      </div>
 
-          {/*<button
-            onClick={handleBatchSummaryGenerate}
-            disabled={batchSummaryLoading}
-            className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+      {selectedEmptyDate && (
+        <CalendarModal
+          icon="🦦"
+          title="오늘의 일기를 작성해볼까요?"
+          description={
+            <>
+              {selectedEmptyDate}에는 아직 일기가 없어요.
+              <br />
+              해도리가 그날의 이야기를 기다리고 있어요.
+            </>
+          }
+          primaryText="일기쓰러가기"
+          onPrimary={handleWriteDiaryFromModal}
+          secondaryText="나중에 쓸게요"
+          onSecondary={() => setSelectedEmptyDate(null)}
+          onClose={() => setSelectedEmptyDate(null)}
+        />
+      )}
+
+      {futureDate && (
+        <CalendarModal
+          icon="🌙"
+          title="아직 미래의 일기는 작성할 수 없어요"
+          description={
+            <>
+              {futureDate}의 일기는 그날이 되면 작성할 수 있어요.
+              <br />
+              해도리가 그날의 이야기도 기다리고 있을게요.
+            </>
+          }
+          primaryText="확인"
+          onPrimary={() => setFutureDate(null)}
+          onClose={() => setFutureDate(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function CalendarModal({
+  icon,
+  title,
+  description,
+  primaryText,
+  onPrimary,
+  secondaryText,
+  onSecondary,
+  onClose,
+}: {
+  icon: string
+  title: string
+  description: React.ReactNode
+  primaryText: string
+  onPrimary: () => void
+  secondaryText?: string
+  onSecondary?: () => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center px-6"
+      style={{ background: "rgba(61, 53, 48, 0.28)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-[28px] px-6 py-6"
+        style={{
+          background: "#FFFCF8",
+          border: "1.5px solid #E5DDD5",
+          boxShadow: "0 16px 40px rgba(61,53,48,0.18)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-center">
+          <div
+            className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+            style={{ background: "#F8EFE7" }}
+          >
+            {icon}
+          </div>
+
+          <h3
+            className="text-lg font-extrabold mb-2"
+            style={{ color: "#3D3530" }}
+          >
+            {title}
+          </h3>
+
+          <p
+            className="text-sm leading-relaxed mb-5"
+            style={{ color: "#8A7E76" }}
+          >
+            {description}
+          </p>
+
+          <button
+            onClick={onPrimary}
+            className="w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98]"
             style={{
-              background: "#FFFCF8",
-              color: "#6F5CFF",
-              border: "1.5px solid #DDD7FF",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              background: "#C9856A",
+              color: "#FFFCF8",
+              boxShadow: "0 4px 16px rgba(201,133,106,0.25)",
             }}
             type="button"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#6F5CFF"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            {batchSummaryLoading
-              ? "태그 없는 일기 전체 요약 중..."
-              : "태그 없는 일기 전체 요약하기"}
-          </button>*/}
+            {primaryText}
+          </button>
 
-          {batchSummaryMessage && (
-            <div
-              className="w-full rounded-2xl px-4 py-3 text-sm font-medium"
+          {secondaryText && onSecondary && (
+            <button
+              onClick={onSecondary}
+              className="w-full mt-2 py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.98]"
               style={{
-                background: "#FFFCF8",
-                color: "#6B625C",
-                border: "1px solid #E5DDD5",
+                background: "#F3EEE8",
+                color: "#8A7E76",
               }}
+              type="button"
             >
-              {batchSummaryMessage}
-            </div>
+              {secondaryText}
+            </button>
           )}
         </div>
       </div>

@@ -35,18 +35,18 @@ type NotificationItem = {
 }
 
 type ManseData = {
-  pillars: Array<{
+  pillars?: Array<{
     label: string
     stem: string
     branch: string
-    element?: "화" | "수" | "목" | "금" | "토" | string
+    element?: string
     tenGod?: string
     ganji?: string
     stem_element?: Record<string, unknown> | null
     branch_element?: Record<string, unknown> | null
     hidden_stems?: string[]
   }>
-  elementSummary: Record<string, unknown>
+  elementSummary?: Record<string, unknown>
   analysis?: string
   analysis_date?: string
   model?: string | null
@@ -56,9 +56,7 @@ type ManseData = {
 function formatLetterDate(dateString?: string) {
   if (!dateString) return ""
   const date = new Date(dateString)
-  const month = date.getMonth() + 1
-  const day = date.getDate()
-  return `${month}월 ${day}일`
+  return `${date.getMonth() + 1}월 ${date.getDate()}일`
 }
 
 function getTodayKey() {
@@ -153,6 +151,16 @@ export default function HomeScreen({
         ? fortuneHint.message
         : "버튼을 눌러 오늘의 흐름을 확인해보세요."
 
+  const todayQuestions = [
+    "오늘 나에게 한마디를 남긴다면 뭐라고 말해주고 싶어?",
+    "오늘 가장 오래 마음에 남았던 감정은 뭐였어?",
+    "오늘 나를 가장 많이 웃게 한 순간은 언제였어?",
+    "오늘 조금 힘들었던 마음이 있었다면 어떤 장면이었어?",
+    "오늘 하루 중 다시 떠올리고 싶은 순간은 뭐였어?",
+  ]
+
+  const todayQuestion = todayQuestions[today.getDate() % todayQuestions.length]
+
   const flowSections = [
     {
       title: "조심할 것",
@@ -161,13 +169,42 @@ export default function HomeScreen({
     },
     {
       title: "기대해도 좋은 일",
-      content: todayFortune?.good_thing || "생성 후 오늘의 좋은 기운을 확인할 수 있어요",
+      content:
+        todayFortune?.good_thing ||
+        "생성 후 오늘의 좋은 기운을 확인할 수 있어요",
       icon: "✨",
     },
     {
       title: "한 줄 조언",
       content: todayFortune?.ritual || "오늘의 하루를 눌러 확인해보세요",
       icon: "💬",
+    },
+  ]
+
+  const fortuneCards = [
+    {
+      title: "오늘의 운세",
+      icon: "🌤",
+      content: flowSummary,
+    },
+    {
+      title: "오늘의 연애운",
+      icon: "💗",
+      content:
+        todayFortune?.love || "오늘의 흐름을 열면 연애운을 확인할 수 있어요.",
+    },
+    {
+      title: "오늘의 재물운",
+      icon: "💰",
+      content:
+        todayFortune?.good_thing ||
+        "오늘의 흐름을 열면 재물운 힌트를 확인할 수 있어요.",
+    },
+    {
+      title: "오늘의 학업운",
+      icon: "📚",
+      content:
+        todayFortune?.study || "오늘의 흐름을 열면 학업운을 확인할 수 있어요.",
     },
   ]
 
@@ -210,7 +247,7 @@ export default function HomeScreen({
     }
   }
 
-  const notifications = useMemo<NotificationItem[]>((() => {
+  const notifications = useMemo<NotificationItem[]>(() => {
     const items: NotificationItem[] = []
     const todayKey = getTodayKey()
 
@@ -245,7 +282,7 @@ export default function HomeScreen({
 
       items.push({
         id: reminderKey,
-        text: "어제 일기를 잊으셨나요?",
+        text: "오늘 일기를 잊으셨나요?",
         sub: "하루를 기록해보아요. 해도리가 기다려요",
         unread: !Boolean(localReadMap[reminderKey]),
         screen: "diary",
@@ -265,12 +302,12 @@ export default function HomeScreen({
     }
 
     return items
-  }) as () => NotificationItem[], [dashboardData, localReadMap])
+  }, [dashboardData, localReadMap])
 
   const navItems = [
     { id: "diary", label: "일기", bg: "#F2C4A8", emoji: "📖" },
     { id: "calendar", label: "달력", bg: "#C8DCC5", emoji: "📅" },
-    { id: "shop", label: "상점", bg: "#F4E4A8", emoji: "🛍️" },
+    { id: "haedori", label: "해도리", bg: "#F4E4A8", emoji: "🦦" },
     { id: "profile", label: "마이", bg: "#DDD5CC", emoji: "👤" },
   ]
 
@@ -290,16 +327,20 @@ export default function HomeScreen({
 
   return (
     <div
-      className="relative overflow-y-auto overscroll-y-contain font-sans"
+      className="relative font-sans overflow-hidden"
       style={{
         background: "#F8F6F2",
         height: "100dvh",
         maxHeight: "100dvh",
-        WebkitOverflowScrolling: "touch",
-        touchAction: "pan-y",
       }}
     >
-      <div className="min-h-full flex flex-col pb-24">
+      <div
+        className="h-full overflow-y-auto overscroll-y-contain pb-32"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
+        }}
+      >
         <div className="flex items-center justify-between px-5 pt-12 pb-3 flex-shrink-0">
           <div>
             <p className="text-xs font-semibold" style={{ color: "#9A8F87" }}>
@@ -375,6 +416,7 @@ export default function HomeScreen({
               disabled={isTodayFortuneLoading}
               className="absolute top-4 left-4 z-20"
               style={{ background: "none", border: "none", padding: 0 }}
+              aria-label="오늘의 흐름 보기"
             >
               <div
                 className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold transition-all active:scale-95"
@@ -403,120 +445,37 @@ export default function HomeScreen({
           </div>
         </div>
 
-        <div className="px-4 pt-4 flex-shrink-0">
+        <div className="px-4 pt-4 pb-5 space-y-4">
           <div
-            className="flex items-center justify-around px-3 py-3 rounded-3xl"
+            className="rounded-[28px] p-5"
             style={{
               background: "#FFFCF8",
               border: "1.5px solid #E5DDD5",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.05)",
             }}
           >
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
-                aria-label={item.label}
-              >
-                <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl"
-                  style={{
-                    background: item.bg,
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                  }}
-                >
-                  {item.emoji}
-                </div>
-                <span
-                  className="text-xs font-bold"
-                  style={{ color: "#3D3530" }}
-                >
-                  {item.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+            <p className="text-xs font-bold mb-2" style={{ color: "#C9856A" }}>
+              오늘의 질문
+            </p>
 
-        <div className="px-4 pt-3 pb-4 space-y-2.5 flex-1">
-          <button
-            onClick={() => onNavigate("diary")}
-            className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all active:scale-[0.98]"
-            style={{
-              background: dashboardData?.diaryDone ? "#EDE8E0" : "#FFFCF8",
-              border: "1.5px solid #E5DDD5",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-            }}
-            disabled={dashboardData?.diaryDone}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{
-                  background: dashboardData?.diaryDone ? "#C4B8B0" : "#F2C4A8",
-                }}
-              >
-                ✏️
-              </div>
+            <h2
+              className="text-lg font-extrabold leading-7 mb-4"
+              style={{ color: "#3D3530" }}
+            >
+              {todayQuestion}
+            </h2>
 
-              <div className="text-left">
-                <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
-                  {dashboardData?.diaryDone
-                    ? "오늘 일기 쓰기 완료"
-                    : "오늘 일기 쓰기"}
-                </p>
-                <p className="text-xs" style={{ color: "#9A8F87" }}>
-                  {dashboardData?.diaryDone
-                    ? "내일 또 만나요!"
-                    : "해도리가 기다리고 있어요"}
-                </p>
-              </div>
-            </div>
-            <span style={{ color: "#C4B8B0" }}>›</span>
-          </button>
-
-          <div
-            className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
-            style={{
-              background: "#FFFCF8",
-              border: "1.5px solid #E5DDD5",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-                style={{ background: "#EDE8E0" }}
-              >
-                🔥
-              </div>
-
-              <div>
-                <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
-                  {dashboardData?.diary_stats?.consecutive_days > 0
-                    ? "연속 기록 중"
-                    : "기록 시작해보세요!"}
-                </p>
-                <p className="text-xs" style={{ color: "#9A8F87" }}>
-                  {dashboardData?.diary_stats?.consecutive_days > 0
-                    ? `오늘도 기록하면 ${dashboardData.diary_stats.consecutive_days + 1}일 달성!`
-                    : "해도리가 응원해요"}
-                </p>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <p
-                className="text-2xl font-extrabold"
-                style={{ color: "#C9856A" }}
-              >
-                {dashboardData?.diary_stats?.consecutive_days ?? 0}
-              </p>
-              <p className="text-xs" style={{ color: "#9A8F87" }}>
-                일
-              </p>
-            </div>
+            <button
+              onClick={() => onNavigate("diary")}
+              className="w-full py-3.5 rounded-2xl text-sm font-extrabold transition-all active:scale-[0.98]"
+              style={{
+                background: "#C9856A",
+                color: "#FFFCF8",
+                boxShadow: "0 8px 18px rgba(201,133,106,0.18)",
+              }}
+            >
+              일기 쓰러가기
+            </button>
           </div>
 
           <div
@@ -563,12 +522,152 @@ export default function HomeScreen({
               </button>
             </div>
           </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3
+                className="text-base font-extrabold"
+                style={{ color: "#3D3530" }}
+              >
+                오늘의 운세
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {fortuneCards.map((card) => (
+                <div
+                  key={card.title}
+                  className="aspect-square rounded-[26px] p-4 flex flex-col"
+                  style={{
+                    background: "#FFFCF8",
+                    border: "1.5px solid #E5DDD5",
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.045)",
+                  }}
+                >
+                  <div className="text-2xl mb-3">{card.icon}</div>
+
+                  <p
+                    className="text-sm font-extrabold mb-2"
+                    style={{ color: "#3D3530" }}
+                  >
+                    {card.title}
+                  </p>
+
+                  <p
+                    className="text-xs leading-5 line-clamp-3 flex-1"
+                    style={{ color: "#8C7A70" }}
+                  >
+                    {isTodayFortuneLoading
+                      ? "해도리가 살펴보는 중이에요..."
+                      : card.content}
+                  </p>
+
+                  <button
+                    onClick={handleFlowButtonClick}
+                    disabled={isTodayFortuneLoading}
+                    className="mt-3 w-full py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-70"
+                    style={{
+                      background: "#F7EEE7",
+                      color: "#C9856A",
+                    }}
+                  >
+                    {hasTodayFortune ? "자세히 보기" : "운세 열기"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="flex items-center justify-between px-4 py-3.5 rounded-2xl"
+            style={{
+              background: "#FFFCF8",
+              border: "1.5px solid #E5DDD5",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                style={{ background: "#EDE8E0" }}
+              >
+                🔥
+              </div>
+
+              <div>
+                <p className="text-sm font-bold" style={{ color: "#3D3530" }}>
+                  {dashboardData?.diary_stats?.consecutive_days > 0
+                    ? "연속 기록 중"
+                    : "기록 시작해보세요!"}
+                </p>
+                <p className="text-xs" style={{ color: "#9A8F87" }}>
+                  {dashboardData?.diary_stats?.consecutive_days > 0
+                    ? `오늘도 기록하면 ${
+                        dashboardData.diary_stats.consecutive_days + 1
+                      }일 달성!`
+                    : "해도리가 응원해요"}
+                </p>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <p
+                className="text-2xl font-extrabold"
+                style={{ color: "#C9856A" }}
+              >
+                {dashboardData?.diary_stats?.consecutive_days ?? 0}
+              </p>
+              <p className="text-xs" style={{ color: "#9A8F87" }}>
+                일
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="absolute left-0 right-0 bottom-0 z-40 px-4 pt-3 pb-5"
+        style={{
+          background:
+            "linear-gradient(to top, rgba(248,246,242,1) 0%, rgba(248,246,242,0.96) 72%, rgba(248,246,242,0) 100%)",
+        }}
+      >
+        <div
+          className="flex items-center justify-around px-3 py-3 rounded-3xl"
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+            boxShadow: "0 4px 18px rgba(61,53,48,0.10)",
+          }}
+        >
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
+              aria-label={item.label}
+            >
+              <div
+                className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl"
+                style={{
+                  background: item.bg,
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                }}
+              >
+                {item.emoji}
+              </div>
+
+              <span className="text-xs font-bold" style={{ color: "#3D3530" }}>
+                {item.label}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
       {showFlowModal && todayFortune && (
         <div
-          className="fixed inset-0 z-50 flex items-end"
+          className="absolute inset-0 z-50 flex items-end"
           style={{ background: "rgba(61,53,48,0.35)" }}
           onClick={() => setShowFlowModal(false)}
         >
@@ -684,7 +783,7 @@ export default function HomeScreen({
 
       {showManse && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center px-4 py-6"
+          className="absolute inset-0 z-50 flex items-end justify-center px-4 py-6"
           style={{ background: "rgba(61,53,48,0.45)" }}
           onClick={() => setShowManse(false)}
         >
@@ -714,16 +813,14 @@ export default function HomeScreen({
                 </h3>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowManse(false)}
-                  className="w-9 h-9 rounded-full flex items-center justify-center"
-                  style={{ background: "#F7F1EB", color: "#6E625B" }}
-                  aria-label="사주 해석 닫기"
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                onClick={() => setShowManse(false)}
+                className="w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ background: "#F7F1EB", color: "#6E625B" }}
+                aria-label="사주 해석 닫기"
+              >
+                ×
+              </button>
             </div>
 
             <div
@@ -796,7 +893,7 @@ export default function HomeScreen({
 
       {showNotifications && (
         <div
-          className="fixed inset-0 z-50 flex items-end"
+          className="absolute inset-0 z-50 flex items-end"
           style={{ background: "rgba(61,53,48,0.35)" }}
           onClick={() => setShowNotifications(false)}
         >

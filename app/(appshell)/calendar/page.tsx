@@ -49,6 +49,16 @@ export default function CalendarPage() {
       return
     }
 
+    if (screen === "diary" && params?.date) {
+      router.push(`/diary?date=${params.date}`)
+      return
+    }
+
+    if (screen === "emotion-report") {
+      router.push("/emotion-report")
+      return
+    }
+
     if (screen === "letter-detail" && params?.letter) {
       const letterId =
         (params.letter as { id?: number | string })?.id ?? params.letter

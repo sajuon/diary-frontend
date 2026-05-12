@@ -7,6 +7,7 @@ interface DiaryEntryResponse {
   user_id: number
   entry_date: string
   content: string
+  weather?: string | null
   mood_tags?: string[]
   created_at: string
   updated_at: string
@@ -31,8 +32,14 @@ interface DiaryDetailScreenProps {
   date?: string
   diary: DiaryEntryResponse
   letter?: LetterResponse | null
-  onUpdateDiary: (data: { content: string; mood_tags: string[] }) => Promise<void>
+  onUpdateDiary: (data: {
+    content: string
+    weather?: string
+    mood_tags: string[]
+  }) => Promise<void>
   onDeleteDiary: () => Promise<void>
+  onGenerateLetterWithPearl?: () => Promise<void>
+  letterGenerating?: boolean
 }
 
 const moodMeta: Record<
@@ -43,36 +50,12 @@ const moodMeta: Record<
     icon: string
   }
 > = {
-  happy: {
-    label: "happy",
-    color: "#F4C97A",
-    icon: "😊",
-  },
-  calm: {
-    label: "calm",
-    color: "#A8BBA5",
-    icon: "😌",
-  },
-  sad: {
-    label: "sad",
-    color: "#A8C4D4",
-    icon: "😢",
-  },
-  angry: {
-    label: "angry",
-    color: "#F2A8A8",
-    icon: "😤",
-  },
-  tired: {
-    label: "tired",
-    color: "#C4B8C4",
-    icon: "😪",
-  },
-  excited: {
-    label: "excited",
-    color: "#F2C4A8",
-    icon: "🥰",
-  },
+  happy: { label: "happy", color: "#F4C97A", icon: "😊" },
+  calm: { label: "calm", color: "#A8BBA5", icon: "😌" },
+  sad: { label: "sad", color: "#A8C4D4", icon: "😢" },
+  angry: { label: "angry", color: "#F2A8A8", icon: "😤" },
+  tired: { label: "tired", color: "#C4B8C4", icon: "😪" },
+  excited: { label: "excited", color: "#F2C4A8", icon: "🥰" },
 }
 
 const defaultMoodMeta = {
@@ -83,11 +66,10 @@ const defaultMoodMeta = {
 
 export default function DiaryDetailScreen({
   onNavigate,
-  date,
   diary,
   letter,
-  onUpdateDiary,
-  onDeleteDiary,
+  onGenerateLetterWithPearl,
+  letterGenerating = false,
 }: DiaryDetailScreenProps) {
   const [starred, setStarred] = useState(false)
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
@@ -96,10 +78,6 @@ export default function DiaryDetailScreen({
   const currentMood = useMemo(() => {
     return moodMeta[moodId] || defaultMoodMeta
   }, [moodId])
-
-  if (!diary) {
-    return <div className="p-8 text-center text-sm">일기 데이터 없음</div>
-  }
 
   return (
     <div
@@ -115,6 +93,7 @@ export default function DiaryDetailScreen({
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="달력으로 돌아가기"
+          type="button"
         >
           <svg
             width="16"
@@ -183,6 +162,7 @@ export default function DiaryDetailScreen({
               해도리의 피드백
             </p>
           </div>
+
           <div
             className="px-5 py-5 rounded-3xl"
             style={{
@@ -191,12 +171,43 @@ export default function DiaryDetailScreen({
               boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
             }}
           >
-            <p
-              className="text-sm whitespace-pre-line"
-              style={{ color: "#3D3530", lineHeight: "1.9" }}
-            >
-              {letter?.content || "아직 해도리 피드백이 없어요."}
-            </p>
+            {letter ? (
+              <p
+                className="text-sm whitespace-pre-line"
+                style={{ color: "#3D3530", lineHeight: "1.9" }}
+              >
+                {letter.content}
+              </p>
+            ) : (
+              <div className="text-center">
+                <p
+                  className="text-sm leading-relaxed mb-4"
+                  style={{ color: "#6B625C" }}
+                >
+                  아직 해도리 답장이 없어요.
+                  <br />
+                  진주 1개를 사용하면 이 일기에 대한 답장을 받을 수 있어요.
+                </p>
+
+                {onGenerateLetterWithPearl && (
+                  <button
+                    onClick={onGenerateLetterWithPearl}
+                    disabled={letterGenerating}
+                    className="w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{
+                      background: "#C9856A",
+                      color: "#FFFCF8",
+                      boxShadow: "0 4px 16px rgba(201,133,106,0.25)",
+                    }}
+                    type="button"
+                  >
+                    {letterGenerating
+                      ? "해도리가 답장 쓰는 중..."
+                      : "진주 1개로 해도리 답장 받기"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -212,40 +223,13 @@ export default function DiaryDetailScreen({
             onClick={() => setStarred((s) => !s)}
             className="flex items-center gap-3 w-full mb-4 transition-all active:scale-[0.97]"
             aria-label={starred ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
+            type="button"
           >
             <div
               className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors"
               style={{ background: starred ? "#FFF3D0" : "#EDE8E0" }}
             >
-              {starred ? (
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="#F4C97A"
-                  stroke="#C9A060"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              ) : (
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#9A8F87"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              )}
+              ⭐
             </div>
             <span
               className="text-sm font-semibold"
@@ -270,33 +254,11 @@ export default function DiaryDetailScreen({
               className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
               style={{
                 background: feedback === "like" ? "#D4EACF" : "#EDE8E0",
-                border:
-                  feedback === "like"
-                    ? "1.5px solid #A8BBA5"
-                    : "1.5px solid transparent",
               }}
               aria-pressed={feedback === "like"}
+              type="button"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill={feedback === "like" ? "#6B9E66" : "none"}
-                stroke={feedback === "like" ? "#6B9E66" : "#9A8F87"}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" />
-                <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-              </svg>
-              <span
-                className="text-sm font-bold"
-                style={{ color: feedback === "like" ? "#6B9E66" : "#6B6059" }}
-              >
-                좋아요
-              </span>
+              <span className="text-sm font-bold">좋아요</span>
             </button>
 
             <button
@@ -304,33 +266,11 @@ export default function DiaryDetailScreen({
               className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
               style={{
                 background: feedback === "dislike" ? "#FDDDD8" : "#EDE8E0",
-                border:
-                  feedback === "dislike"
-                    ? "1.5px solid #F2A8A8"
-                    : "1.5px solid transparent",
               }}
               aria-pressed={feedback === "dislike"}
+              type="button"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill={feedback === "dislike" ? "#C9856A" : "none"}
-                stroke={feedback === "dislike" ? "#C9856A" : "#9A8F87"}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z" />
-                <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-              </svg>
-              <span
-                className="text-sm font-bold"
-                style={{ color: feedback === "dislike" ? "#C9856A" : "#6B6059" }}
-              >
-                아쉬워요
-              </span>
+              <span className="text-sm font-bold">아쉬워요</span>
             </button>
           </div>
 
