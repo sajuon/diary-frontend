@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { getDailyQuestion } from "@/lib/daily-questions"
 import { useUserPearls } from "../hooks/use-user-pearls"
 
 interface HomeScreenProps {
@@ -67,6 +68,16 @@ function getTodayKey() {
   return `${y}-${m}-${d}`
 }
 
+function getHomeQuestionUserKey(dashboardData?: any) {
+  return (
+    dashboardData?.user?.id ??
+    dashboardData?.user_id ??
+    dashboardData?.profile?.id ??
+    dashboardData?.profile?.user_id ??
+    "guest"
+  )
+}
+
 export default function HomeScreen({
   onNavigate,
   dashboardData,
@@ -76,12 +87,35 @@ export default function HomeScreen({
   profile = null,
 }: HomeScreenProps) {
   const today = new Date()
+  const todayKey = getTodayKey()
+
   const dateStr = today.toLocaleDateString("ko-KR", {
     year: "numeric",
     month: "long",
     day: "numeric",
     weekday: "short",
   })
+
+  const questionUserKey = useMemo(
+    () => getHomeQuestionUserKey(dashboardData),
+    [dashboardData]
+  )
+
+  const todayQuestion = useMemo(() => {
+    return getDailyQuestion({
+      userKey: String(questionUserKey),
+      date: today,
+    })
+  }, [questionUserKey, todayKey])
+
+  const diaryParams = useMemo(
+    () => ({
+      question: todayQuestion,
+      questionDate: todayKey,
+      questionSource: "rule_365",
+    }),
+    [todayQuestion, todayKey]
+  )
 
   const API_BASE_URL = useMemo(() => process.env.NEXT_PUBLIC_API_URL || "", [])
 
@@ -150,16 +184,6 @@ export default function HomeScreen({
       : typeof fortuneHint?.message === "string"
         ? fortuneHint.message
         : "버튼을 눌러 오늘의 흐름을 확인해보세요."
-
-  const todayQuestions = [
-    "오늘 나에게 한마디를 남긴다면 뭐라고 말해주고 싶어?",
-    "오늘 가장 오래 마음에 남았던 감정은 뭐였어?",
-    "오늘 나를 가장 많이 웃게 한 순간은 언제였어?",
-    "오늘 조금 힘들었던 마음이 있었다면 어떤 장면이었어?",
-    "오늘 하루 중 다시 떠올리고 싶은 순간은 뭐였어?",
-  ]
-
-  const todayQuestion = todayQuestions[today.getDate() % todayQuestions.length]
 
   const flowSections = [
     {
@@ -249,7 +273,6 @@ export default function HomeScreen({
 
   const notifications = useMemo<NotificationItem[]>(() => {
     const items: NotificationItem[] = []
-    const todayKey = getTodayKey()
 
     const todayLetter = dashboardData?.today_letter as
       | { id?: number; letter_date?: string; is_read?: boolean }
@@ -286,6 +309,7 @@ export default function HomeScreen({
         sub: "하루를 기록해보아요. 해도리가 기다려요",
         unread: !Boolean(localReadMap[reminderKey]),
         screen: "diary",
+        params: diaryParams,
       })
     }
 
@@ -302,7 +326,7 @@ export default function HomeScreen({
     }
 
     return items
-  }, [dashboardData, localReadMap])
+  }, [dashboardData, localReadMap, todayKey, diaryParams])
 
   const navItems = [
     { id: "diary", label: "일기", bg: "#F2C4A8", emoji: "📖" },
@@ -466,7 +490,7 @@ export default function HomeScreen({
             </h2>
 
             <button
-              onClick={() => onNavigate("diary")}
+              onClick={() => onNavigate("diary", diaryParams)}
               className="w-full py-3.5 rounded-2xl text-sm font-extrabold transition-all active:scale-[0.98]"
               style={{
                 background: "#C9856A",

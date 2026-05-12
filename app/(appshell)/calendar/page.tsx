@@ -1,3 +1,4 @@
+// /home/dori/diary-frontend/app/(appshell)/calendar/page.tsx
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -15,6 +16,37 @@ export type DiaryItem = {
   summary_tag?: string | null
   created_at: string
   updated_at: string
+}
+
+function buildUrlWithParams(
+  pathname: string,
+  params?: Record<string, unknown>
+) {
+  if (!params || Object.keys(params).length === 0) {
+    return pathname
+  }
+
+  const searchParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      searchParams.set(key, String(value))
+    }
+  })
+
+  const queryString = searchParams.toString()
+
+  if (!queryString) {
+    return pathname
+  }
+
+  return `${pathname}?${queryString}`
 }
 
 export default function CalendarPage() {
@@ -49,8 +81,8 @@ export default function CalendarPage() {
       return
     }
 
-    if (screen === "diary" && params?.date) {
-      router.push(`/diary?date=${params.date}`)
+    if (screen === "diary") {
+      router.push(buildUrlWithParams("/diary", params))
       return
     }
 
@@ -66,7 +98,7 @@ export default function CalendarPage() {
       return
     }
 
-    router.push(`/${screen}`)
+    router.push(buildUrlWithParams(`/${screen}`, params))
   }
 
   if (loading) {

@@ -1,9 +1,11 @@
+// /home/dori/diary-frontend/components/diary-screen.tsx
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
+import { getDailyQuestion } from "@/lib/daily-questions"
 import {
   getDiaryMonthKeyFromDate,
   invalidateDiaryMonth,
@@ -11,6 +13,9 @@ import {
 
 interface DiaryScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
+  initialQuestion?: string
+  initialQuestionDate?: string
+  initialQuestionSource?: string
 }
 
 type DiarySaveResponse = {
@@ -47,26 +52,46 @@ function getTodayDateString() {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, "0")
   const day = String(now.getDate()).padStart(2, "0")
+
   return `${year}-${month}-${day}`
 }
 
-function isValidDateString(value: string | null) {
+function isValidDateString(value: string | null): value is string {
   if (!value) return false
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
 
 function formatKoreanDate(dateString: string) {
-  const [year, month, day] = dateString.split("-")
+  const [, month, day] = dateString.split("-")
   return `${Number(month)}월 ${Number(day)}일 일기`
 }
 
-export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
+function dateStringToLocalDate(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function getQuestionUserKey() {
+  if (typeof window === "undefined") return "guest"
+
+  return (
+    window.localStorage.getItem("user_id") ||
+    window.localStorage.getItem("access_token") ||
+    "guest"
+  )
+}
+
+export default function DiaryScreen({
+  onNavigate,
+  initialQuestion,
+  initialQuestionDate,
+}: DiaryScreenProps) {
   const searchParams = useSearchParams()
 
-  const selectedDate = useMemo(() => {
-    const dateParam = searchParams.get("date")
-    return isValidDateString(dateParam) ? dateParam! : getTodayDateString()
-  }, [searchParams])
+const selectedDate = useMemo<string>(() => {
+  const dateParam = searchParams.get("date")
+  return isValidDateString(dateParam) ? dateParam : getTodayDateString()
+}, [searchParams])
 
   const isToday = selectedDate === getTodayDateString()
 
@@ -77,8 +102,11 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
   const [text, setText] = useState("")
   const [selectedWeather, setSelectedWeather] = useState("sunny")
   const [selectedMood, setSelectedMood] = useState("calm")
-  const [question, setQuestion] = useState("오늘의 질문을 준비하고 있어요...")
-  const [questionLoading, setQuestionLoading] = useState(false)
+
+  const [question, setQuestion] = useState(
+    "오늘의 질문을 준비하고 있어요..."
+  )
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -131,64 +159,31 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
     fetchDiary()
   }, [isToday, selectedDate])
 
+  // ✅ 룰베이스 질문 적용
   useEffect(() => {
     if (activeTab !== "question") return
 
-    let cancelled = false
-
-    async function fetchQuestion() {
-      setQuestionLoading(true)
-
-      try {
-        const data = (await apiClient.getDiaryQuestion()) as {
-          question?: string
-          model?: string
-          source_type?: string
-          entry_date?: string
-          created_at?: string
-          cached?: boolean
-        }
-
-        if (cancelled) return
-
-        setQuestion(
-          data?.question?.trim() ||
-            "오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?"
-        )
-      } catch {
-        if (cancelled) return
-        setQuestion("오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?")
-      } finally {
-        if (!cancelled) {
-          setQuestionLoading(false)
-        }
-      }
+    if (
+      initialQuestion &&
+      (!initialQuestionDate ||
+        initialQuestionDate === selectedDate)
+    ) {
+      setQuestion(initialQuestion)
+      return
     }
 
-    fetchQuestion()
+    const dailyQuestion = getDailyQuestion({
+      userKey: getQuestionUserKey(),
+      date: dateStringToLocalDate(selectedDate),
+    })
 
-    return () => {
-      cancelled = true
-    }
-  }, [activeTab])
-
-  async function handleRefreshQuestion() {
-    setQuestionLoading(true)
-
-    try {
-      const data = (await apiClient.getDiaryQuestion()) as {
-        question?: string
-      }
-
-      setQuestion(
-        data?.question?.trim() || "오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?"
-      )
-    } catch {
-      setQuestion("오늘 나를 돌아볼 수 있는 한 가지는 무엇일까?")
-    } finally {
-      setQuestionLoading(false)
-    }
-  }
+    setQuestion(dailyQuestion)
+  }, [
+    activeTab,
+    initialQuestion,
+    initialQuestionDate,
+    selectedDate,
+  ])
 
   async function handleSaveDiary() {
     setLoading(true)
@@ -212,7 +207,8 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
         } as any)) as DiarySaveResponse
       }
 
-      const entryDate = saved?.entry_date || selectedDate
+      const entryDate: string = saved?.entry_date || selectedDate
+
       const monthKey = getDiaryMonthKeyFromDate(entryDate)
       invalidateDiaryMonth(monthKey)
 
@@ -225,37 +221,37 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "#F8F6F2" }}>
-      <div className="flex items-center justify-between px-5 pt-12 pb-4">
+    <div
+      className="flex flex-col h-full"
+      style={{ background: "#F8F6F2" }}
+    >
+      {/* 헤더 */}
+      <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
         <button
           onClick={() => onNavigate("calendar")}
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
-          aria-label="뒤로 가기"
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+          }}
           type="button"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#3D3530"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          ←
         </button>
 
-        <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
-          {isToday ? "오늘 일기" : formatKoreanDate(selectedDate)}
+        <h2
+          className="text-base font-extrabold"
+          style={{ color: "#3D3530" }}
+        >
+          {isToday
+            ? "오늘 일기"
+            : formatKoreanDate(selectedDate)}
         </h2>
 
         <div className="w-9" />
       </div>
 
+      {/* 날짜 표시 */}
       {!isToday && (
         <div className="px-5 mb-4">
           <div
@@ -271,34 +267,54 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
         </div>
       )}
 
+      {/* 탭 */}
       <div className="px-5 mb-4">
-        <div className="flex rounded-2xl p-1" style={{ background: "#EDE8E0" }}>
+        <div
+          className="flex rounded-2xl p-1"
+          style={{ background: "#EDE8E0" }}
+        >
           {(["question", "free"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
               style={{
-                background: activeTab === tab ? "#FFFCF8" : "transparent",
-                color: activeTab === tab ? "#C9856A" : "#9A8F87",
+                background:
+                  activeTab === tab
+                    ? "#FFFCF8"
+                    : "transparent",
+                color:
+                  activeTab === tab
+                    ? "#C9856A"
+                    : "#9A8F87",
                 boxShadow:
-                  activeTab === tab ? "0 2px 6px rgba(0,0,0,0.06)" : "none",
+                  activeTab === tab
+                    ? "0 2px 6px rgba(0,0,0,0.06)"
+                    : "none",
               }}
               type="button"
             >
-              {tab === "question" ? "질문형" : "자유형"}
+              {tab === "question"
+                ? "질문형"
+                : "자유형"}
             </button>
           ))}
         </div>
       </div>
 
+      {/* 스크롤 영역 */}
       <div className="flex-1 overflow-y-auto px-5 space-y-4 pb-28">
+
+        {/* 질문 */}
         {activeTab === "question" && (
           <div className="space-y-2">
             <div className="flex items-end gap-3">
               <div
                 className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0"
-                style={{ boxShadow: "0 2px 8px rgba(201,133,106,0.15)" }}
+                style={{
+                  boxShadow:
+                    "0 2px 8px rgba(201,133,106,0.15)",
+                }}
               >
                 <Image
                   src="/images/haedori-character.png"
@@ -314,22 +330,25 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 style={{
                   background: "#FFFCF8",
                   border: "1.5px solid #E5DDD5",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                  boxShadow:
+                    "0 2px 8px rgba(0,0,0,0.04)",
                 }}
               >
                 <p
                   className="text-sm font-bold leading-relaxed"
                   style={{ color: "#3D3530" }}
                 >
-                  {questionLoading ? "오늘의 질문을 준비하고 있어요..." : question}
+                  {question}
                 </p>
 
                 <div
                   className="absolute left-0 bottom-3 w-0 h-0"
                   style={{
                     borderTop: "6px solid transparent",
-                    borderBottom: "6px solid transparent",
-                    borderRight: "8px solid #FFFCF8",
+                    borderBottom:
+                      "6px solid transparent",
+                    borderRight:
+                      "8px solid #FFFCF8",
                     marginLeft: "-8px",
                   }}
                 />
@@ -337,30 +356,28 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
             </div>
 
             <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleRefreshQuestion}
-                disabled={questionLoading}
-                className="px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95"
+              <span
+                className="px-3 py-1.5 rounded-full text-xs font-bold"
                 style={{
                   background: "#FFFCF8",
                   border: "1.5px solid #E5DDD5",
                   color: "#9A8F87",
-                  opacity: questionLoading ? 0.6 : 1,
                 }}
               >
-                {questionLoading ? "질문 생성 중..." : "질문 바꾸기"}
-              </button>
+                오늘의 질문
+              </span>
             </div>
           </div>
         )}
 
+        {/* 텍스트 입력 */}
         <div
           className="rounded-3xl overflow-hidden"
           style={{
             background: "#FFFCF8",
             border: "1.5px solid #E5DDD5",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            boxShadow:
+              "0 2px 8px rgba(0,0,0,0.04)",
           }}
         >
           <textarea
@@ -380,14 +397,21 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           />
 
           <div className="px-5 pb-3 flex justify-end">
-            <span className="text-xs" style={{ color: "#C4B8B0" }}>
+            <span
+              className="text-xs"
+              style={{ color: "#C4B8B0" }}
+            >
               {text.length}자
             </span>
           </div>
         </div>
 
+        {/* 날씨 */}
         <div>
-          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
+          <p
+            className="text-xs font-bold mb-2.5"
+            style={{ color: "#9A8F87" }}
+          >
             오늘 날씨
           </p>
 
@@ -395,29 +419,33 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
             {weathers.map((w) => (
               <button
                 key={w.id}
-                onClick={() => setSelectedWeather(w.id)}
+                onClick={() =>
+                  setSelectedWeather(w.id)
+                }
                 className="flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all active:scale-95"
                 style={{
                   background:
-                    selectedWeather === w.id ? "#FFFCF8" : "transparent",
+                    selectedWeather === w.id
+                      ? "#FFFCF8"
+                      : "transparent",
                   border:
                     selectedWeather === w.id
                       ? "1.5px solid #C9856A"
                       : "1.5px solid #E5DDD5",
-                  boxShadow:
-                    selectedWeather === w.id
-                      ? "0 2px 6px rgba(201,133,106,0.15)"
-                      : "none",
                 }}
-                aria-label={w.label}
-                aria-pressed={selectedWeather === w.id}
                 type="button"
               >
-                <span className="text-xl">{w.icon}</span>
+                <span className="text-xl">
+                  {w.icon}
+                </span>
+
                 <span
                   className="text-xs font-semibold"
                   style={{
-                    color: selectedWeather === w.id ? "#C9856A" : "#9A8F87",
+                    color:
+                      selectedWeather === w.id
+                        ? "#C9856A"
+                        : "#9A8F87",
                   }}
                 >
                   {w.label}
@@ -427,8 +455,12 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           </div>
         </div>
 
+        {/* 기분 */}
         <div>
-          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
+          <p
+            className="text-xs font-bold mb-2.5"
+            style={{ color: "#9A8F87" }}
+          >
             오늘 기분
           </p>
 
@@ -440,21 +472,27 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
                 className="flex flex-col items-center gap-1 py-2.5 rounded-2xl transition-all active:scale-95"
                 style={{
                   background:
-                    selectedMood === m.id ? `${m.color}30` : "#FFFCF8",
+                    selectedMood === m.id
+                      ? `${m.color}30`
+                      : "#FFFCF8",
                   border:
                     selectedMood === m.id
                       ? `1.5px solid ${m.color}`
                       : "1.5px solid #E5DDD5",
                 }}
-                aria-label={m.label}
-                aria-pressed={selectedMood === m.id}
                 type="button"
               >
-                <span className="text-xl">{m.icon}</span>
+                <span className="text-xl">
+                  {m.icon}
+                </span>
+
                 <span
                   className="text-xs font-semibold"
                   style={{
-                    color: selectedMood === m.id ? "#3D3530" : "#9A8F87",
+                    color:
+                      selectedMood === m.id
+                        ? "#3D3530"
+                        : "#9A8F87",
                     fontSize: "10px",
                   }}
                 >
@@ -466,17 +504,17 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
         </div>
       </div>
 
+      {/* 하단 버튼 */}
       <div
         className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm px-5 pb-8 pt-4"
         style={{
-          background: "linear-gradient(to top, #F8F6F2 80%, transparent)",
+          background:
+            "linear-gradient(to top, #F8F6F2 80%, transparent)",
         }}
       >
-        {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
-
-        {isEdit && !canEdit && (
-          <div className="text-sm mb-2" style={{ color: "#C95050" }}>
-            오늘 일기는 오후 11시까지만 수정할 수 있어요.
+        {error && (
+          <div className="text-red-500 text-sm mb-2">
+            {error}
           </div>
         )}
 
@@ -485,19 +523,21 @@ export default function DiaryScreen({ onNavigate }: DiaryScreenProps) {
           style={{
             background: "#C9856A",
             color: "#FFFCF8",
-            boxShadow: "0 4px 16px rgba(201,133,106,0.35)",
-            opacity: loading || !text.trim() || (isEdit && !canEdit) ? 0.6 : 1,
+            boxShadow:
+              "0 4px 16px rgba(201,133,106,0.35)",
+            opacity:
+              loading || !text.trim()
+                ? 0.6
+                : 1,
           }}
           onClick={handleSaveDiary}
-          disabled={loading || !text.trim() || (isEdit && !canEdit)}
+          disabled={loading || !text.trim()}
           type="button"
         >
           {loading
             ? "저장 중..."
             : isEdit
-              ? canEdit
-                ? "일기 수정하기"
-                : "오늘 일기 수정 마감"
+              ? "일기 수정하기"
               : "일기 저장하기"}
         </button>
       </div>

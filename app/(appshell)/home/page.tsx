@@ -60,6 +60,37 @@ function getKstTodayString() {
   return kst.toISOString().slice(0, 10)
 }
 
+function buildUrlWithParams(
+  pathname: string,
+  params?: Record<string, unknown>
+) {
+  if (!params || Object.keys(params).length === 0) {
+    return pathname
+  }
+
+  const searchParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      searchParams.set(key, String(value))
+    }
+  })
+
+  const queryString = searchParams.toString()
+
+  if (!queryString) {
+    return pathname
+  }
+
+  return `${pathname}?${queryString}`
+}
+
 export default function HomePage() {
   const router = useRouter()
 
@@ -217,7 +248,12 @@ export default function HomePage() {
       return
     }
 
-    router.push(`/${screen}`)
+    if (screen === "diary") {
+      router.push(buildUrlWithParams("/diary", params))
+      return
+    }
+
+    router.push(buildUrlWithParams(`/${screen}`, params))
   }
 
   if (loading) {

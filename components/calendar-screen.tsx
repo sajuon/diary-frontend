@@ -1,7 +1,10 @@
+// /home/dori/diary-frontend/components/calendar-screen.tsx
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import type { ReactNode } from "react"
 import { apiClient } from "@/lib/api"
+import { getDailyQuestion } from "@/lib/daily-questions"
 import {
   clearDiaryMonthInvalidation,
   isDiaryMonthInvalidated,
@@ -66,6 +69,21 @@ function formatDate(year: number, month: number, day: number) {
 function getTodayDateString() {
   const now = new Date()
   return formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate())
+}
+
+function dateStringToLocalDate(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function getQuestionUserKey() {
+  if (typeof window === "undefined") return "guest"
+
+  return (
+    window.localStorage.getItem("user_id") ||
+    window.localStorage.getItem("access_token") ||
+    "guest"
+  )
 }
 
 function getDiaryLabel(entry: DiaryApiItem) {
@@ -240,7 +258,18 @@ export default function CalendarScreen({
   const handleWriteDiaryFromModal = () => {
     if (!selectedEmptyDate) return
 
-    onNavigate("diary", { date: selectedEmptyDate })
+    const question = getDailyQuestion({
+      userKey: getQuestionUserKey(),
+      date: dateStringToLocalDate(selectedEmptyDate),
+    })
+
+    onNavigate("diary", {
+      date: selectedEmptyDate,
+      question,
+      questionDate: selectedEmptyDate,
+      questionSource: "rule_365",
+    })
+
     setSelectedEmptyDate(null)
   }
 
@@ -271,19 +300,7 @@ export default function CalendarScreen({
           aria-label="뒤로 가기"
           type="button"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#3D3530"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          ←
         </button>
 
         <div className="flex items-center gap-2">
@@ -294,19 +311,7 @@ export default function CalendarScreen({
             aria-label="이전 달"
             type="button"
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#9A8F87"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
+            ‹
           </button>
 
           <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
@@ -320,19 +325,7 @@ export default function CalendarScreen({
             aria-label="다음 달"
             type="button"
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#9A8F87"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
+            ›
           </button>
         </div>
 
@@ -409,13 +402,6 @@ export default function CalendarScreen({
                   opacity: isFutureDate && !hasEntry ? 0.7 : 1,
                   WebkitTapHighlightColor: "transparent",
                 }}
-                aria-label={`${day}일${
-                  hasEntry
-                    ? ", 일기 보기"
-                    : isFutureDate
-                      ? ", 미래 날짜"
-                      : ", 일기 작성하기"
-                }`}
                 type="button"
               >
                 <span
@@ -491,7 +477,7 @@ export default function CalendarScreen({
         <div className="px-5 pb-8 flex flex-col gap-3">
           <button
             onClick={() => onNavigate("emotion-report")}
-            className="w-full py-4 rounded-2xl font-extrabold text-base transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-2xl font-extrabold text-base transition-all active:scale-[0.98]"
             style={{
               background: "#C9856A",
               color: "#FFFCF8",
@@ -499,27 +485,12 @@ export default function CalendarScreen({
             }}
             type="button"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#FFFCF8"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4 19V5" />
-              <path d="M4 19h16" />
-              <path d="M8 15l3-3 3 2 4-6" />
-            </svg>
             감정 리포트 확인하기
           </button>
 
           <button
             onClick={() => onNavigate("letterbox")}
-            className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98]"
             style={{
               background: "#FFFCF8",
               color: "#C9856A",
@@ -584,7 +555,7 @@ function CalendarModal({
 }: {
   icon: string
   title: string
-  description: React.ReactNode
+  description: ReactNode
   primaryText: string
   onPrimary: () => void
   secondaryText?: string
