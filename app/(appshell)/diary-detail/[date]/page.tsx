@@ -1,9 +1,12 @@
+// /home/dori/diary-frontend/app/(appshell)/diary-detail/[date]/page.tsx
 "use client"
 
 import { useRouter, useParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import DiaryDetailScreen from "@/components/diary-detail-screen"
 import { apiClient } from "@/lib/api"
+
+type DiaryType = "question" | "free"
 
 interface DiaryDetailResponse {
   id: number
@@ -13,6 +16,13 @@ interface DiaryDetailResponse {
   weather?: string | null
   mood_tags?: string[]
   summary_tag?: string | null
+
+  // 질문형 / 자유형 구분
+  diary_type?: DiaryType | null
+
+  // 질문형 일기일 때의 질문 문구
+  question_text?: string | null
+
   created_at: string
   updated_at: string
 }
@@ -117,13 +127,22 @@ export default function DiaryDetailPage() {
     content: string
     weather?: string
     mood_tags: string[]
+    diary_type?: DiaryType | null
+    question_text?: string | null
   }) => {
     try {
       const updated = await apiClient.updateDiary(date, {
         content: data.content,
         weather: data.weather || diary?.weather || "sunny",
         mood_tags: data.mood_tags,
-      })
+        diary_type: data.diary_type || diary?.diary_type || "free",
+        question_text:
+          data.diary_type === "question"
+            ? data.question_text ?? diary?.question_text ?? null
+            : diary?.diary_type === "question"
+              ? diary?.question_text ?? null
+              : null,
+      } as any)
 
       const typedUpdated = updated as DiaryDetailResponse
       setDiary(typedUpdated)

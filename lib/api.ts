@@ -31,6 +31,9 @@ type DiaryPayload = {
   content: string
   weather: string
   mood_tags: string[]
+
+  diary_type?: "question" | "free"
+  question_text?: string | null
 }
 
 class ApiClient {

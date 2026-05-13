@@ -18,6 +18,8 @@ interface DiaryScreenProps {
   initialQuestionSource?: string
 }
 
+type DiaryType = "question" | "free"
+
 type DiarySaveResponse = {
   id?: number
   user_id?: number
@@ -26,6 +28,8 @@ type DiarySaveResponse = {
   weather?: string | null
   mood_tags?: string[] | null
   summary_tag?: string | null
+  diary_type?: DiaryType | null
+  question_text?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -88,24 +92,22 @@ export default function DiaryScreen({
 }: DiaryScreenProps) {
   const searchParams = useSearchParams()
 
-const selectedDate = useMemo<string>(() => {
-  const dateParam = searchParams.get("date")
-  return isValidDateString(dateParam) ? dateParam : getTodayDateString()
-}, [searchParams])
+  const selectedDate = useMemo<string>(() => {
+    const dateParam = searchParams.get("date")
+    return isValidDateString(dateParam) ? dateParam : getTodayDateString()
+  }, [searchParams])
 
   const isToday = selectedDate === getTodayDateString()
 
   const [isEdit, setIsEdit] = useState(false)
   const [canEdit, setCanEdit] = useState(true)
 
-  const [activeTab, setActiveTab] = useState<"question" | "free">("question")
+  const [activeTab, setActiveTab] = useState<DiaryType>("question")
   const [text, setText] = useState("")
   const [selectedWeather, setSelectedWeather] = useState("sunny")
   const [selectedMood, setSelectedMood] = useState("calm")
 
-  const [question, setQuestion] = useState(
-    "오늘의 질문을 준비하고 있어요..."
-  )
+  const [question, setQuestion] = useState("오늘의 질문을 준비하고 있어요...")
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -125,18 +127,24 @@ const selectedDate = useMemo<string>(() => {
           setText("")
           setSelectedWeather("sunny")
           setSelectedMood("calm")
+          setActiveTab("question")
           return
         }
 
-        const data = (await apiClient.getTodayDiary()) as {
-          content?: string
-          weather?: string
-          mood_tags?: string[]
-        }
+        const data = (await apiClient.getTodayDiary()) as DiarySaveResponse
 
         setText(data.content || "")
         setSelectedWeather(data.weather || "sunny")
         setSelectedMood(data.mood_tags?.[0] || "calm")
+
+        if (data.diary_type === "free" || data.diary_type === "question") {
+          setActiveTab(data.diary_type)
+        }
+
+        if (data.question_text) {
+          setQuestion(data.question_text)
+        }
+
         setIsEdit(true)
       } catch (e: any) {
         const message = e?.message || ""
@@ -149,6 +157,7 @@ const selectedDate = useMemo<string>(() => {
           setText("")
           setSelectedWeather("sunny")
           setSelectedMood("calm")
+          setActiveTab("question")
           return
         }
 
@@ -159,14 +168,12 @@ const selectedDate = useMemo<string>(() => {
     fetchDiary()
   }, [isToday, selectedDate])
 
-  // ✅ 룰베이스 질문 적용
   useEffect(() => {
     if (activeTab !== "question") return
 
     if (
       initialQuestion &&
-      (!initialQuestionDate ||
-        initialQuestionDate === selectedDate)
+      (!initialQuestionDate || initialQuestionDate === selectedDate)
     ) {
       setQuestion(initialQuestion)
       return
@@ -178,33 +185,28 @@ const selectedDate = useMemo<string>(() => {
     })
 
     setQuestion(dailyQuestion)
-  }, [
-    activeTab,
-    initialQuestion,
-    initialQuestionDate,
-    selectedDate,
-  ])
+  }, [activeTab, initialQuestion, initialQuestionDate, selectedDate])
 
   async function handleSaveDiary() {
     setLoading(true)
     setError(null)
 
     try {
+      const payload = {
+        entry_date: selectedDate,
+        content: text,
+        weather: selectedWeather,
+        mood_tags: [selectedMood],
+        diary_type: activeTab,
+        question_text: activeTab === "question" ? question : null,
+      }
+
       let saved: DiarySaveResponse
 
       if (isEdit && isToday) {
-        saved = (await apiClient.updateTodayDiary({
-          content: text,
-          weather: selectedWeather,
-          mood_tags: [selectedMood],
-        })) as DiarySaveResponse
+        saved = (await apiClient.updateTodayDiary(payload as any)) as DiarySaveResponse
       } else {
-        saved = (await apiClient.createDiary({
-          entry_date: selectedDate,
-          content: text,
-          weather: selectedWeather,
-          mood_tags: [selectedMood],
-        } as any)) as DiarySaveResponse
+        saved = (await apiClient.createDiary(payload as any)) as DiarySaveResponse
       }
 
       const entryDate: string = saved?.entry_date || selectedDate
@@ -221,37 +223,24 @@ const selectedDate = useMemo<string>(() => {
   }
 
   return (
-    <div
-      className="flex flex-col h-full"
-      style={{ background: "#F8F6F2" }}
-    >
-      {/* 헤더 */}
+    <div className="flex flex-col h-full" style={{ background: "#F8F6F2" }}>
       <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
         <button
           onClick={() => onNavigate("calendar")}
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-          }}
+          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           type="button"
         >
           ←
         </button>
 
-        <h2
-          className="text-base font-extrabold"
-          style={{ color: "#3D3530" }}
-        >
-          {isToday
-            ? "오늘 일기"
-            : formatKoreanDate(selectedDate)}
+        <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
+          {isToday ? "오늘 일기" : formatKoreanDate(selectedDate)}
         </h2>
 
         <div className="w-9" />
       </div>
 
-      {/* 날짜 표시 */}
       {!isToday && (
         <div className="px-5 mb-4">
           <div
@@ -267,54 +256,34 @@ const selectedDate = useMemo<string>(() => {
         </div>
       )}
 
-      {/* 탭 */}
       <div className="px-5 mb-4">
-        <div
-          className="flex rounded-2xl p-1"
-          style={{ background: "#EDE8E0" }}
-        >
+        <div className="flex rounded-2xl p-1" style={{ background: "#EDE8E0" }}>
           {(["question", "free"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
               style={{
-                background:
-                  activeTab === tab
-                    ? "#FFFCF8"
-                    : "transparent",
-                color:
-                  activeTab === tab
-                    ? "#C9856A"
-                    : "#9A8F87",
+                background: activeTab === tab ? "#FFFCF8" : "transparent",
+                color: activeTab === tab ? "#C9856A" : "#9A8F87",
                 boxShadow:
-                  activeTab === tab
-                    ? "0 2px 6px rgba(0,0,0,0.06)"
-                    : "none",
+                  activeTab === tab ? "0 2px 6px rgba(0,0,0,0.06)" : "none",
               }}
               type="button"
             >
-              {tab === "question"
-                ? "질문형"
-                : "자유형"}
+              {tab === "question" ? "질문형" : "자유형"}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 스크롤 영역 */}
       <div className="flex-1 overflow-y-auto px-5 space-y-4 pb-28">
-
-        {/* 질문 */}
         {activeTab === "question" && (
           <div className="space-y-2">
             <div className="flex items-end gap-3">
               <div
                 className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0"
-                style={{
-                  boxShadow:
-                    "0 2px 8px rgba(201,133,106,0.15)",
-                }}
+                style={{ boxShadow: "0 2px 8px rgba(201,133,106,0.15)" }}
               >
                 <Image
                   src="/images/haedori-character.png"
@@ -330,8 +299,7 @@ const selectedDate = useMemo<string>(() => {
                 style={{
                   background: "#FFFCF8",
                   border: "1.5px solid #E5DDD5",
-                  boxShadow:
-                    "0 2px 8px rgba(0,0,0,0.04)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
                 }}
               >
                 <p
@@ -345,10 +313,8 @@ const selectedDate = useMemo<string>(() => {
                   className="absolute left-0 bottom-3 w-0 h-0"
                   style={{
                     borderTop: "6px solid transparent",
-                    borderBottom:
-                      "6px solid transparent",
-                    borderRight:
-                      "8px solid #FFFCF8",
+                    borderBottom: "6px solid transparent",
+                    borderRight: "8px solid #FFFCF8",
                     marginLeft: "-8px",
                   }}
                 />
@@ -370,14 +336,12 @@ const selectedDate = useMemo<string>(() => {
           </div>
         )}
 
-        {/* 텍스트 입력 */}
         <div
           className="rounded-3xl overflow-hidden"
           style={{
             background: "#FFFCF8",
             border: "1.5px solid #E5DDD5",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.04)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
           }}
         >
           <textarea
@@ -397,21 +361,14 @@ const selectedDate = useMemo<string>(() => {
           />
 
           <div className="px-5 pb-3 flex justify-end">
-            <span
-              className="text-xs"
-              style={{ color: "#C4B8B0" }}
-            >
+            <span className="text-xs" style={{ color: "#C4B8B0" }}>
               {text.length}자
             </span>
           </div>
         </div>
 
-        {/* 날씨 */}
         <div>
-          <p
-            className="text-xs font-bold mb-2.5"
-            style={{ color: "#9A8F87" }}
-          >
+          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
             오늘 날씨
           </p>
 
@@ -419,15 +376,10 @@ const selectedDate = useMemo<string>(() => {
             {weathers.map((w) => (
               <button
                 key={w.id}
-                onClick={() =>
-                  setSelectedWeather(w.id)
-                }
+                onClick={() => setSelectedWeather(w.id)}
                 className="flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all active:scale-95"
                 style={{
-                  background:
-                    selectedWeather === w.id
-                      ? "#FFFCF8"
-                      : "transparent",
+                  background: selectedWeather === w.id ? "#FFFCF8" : "transparent",
                   border:
                     selectedWeather === w.id
                       ? "1.5px solid #C9856A"
@@ -435,17 +387,12 @@ const selectedDate = useMemo<string>(() => {
                 }}
                 type="button"
               >
-                <span className="text-xl">
-                  {w.icon}
-                </span>
+                <span className="text-xl">{w.icon}</span>
 
                 <span
                   className="text-xs font-semibold"
                   style={{
-                    color:
-                      selectedWeather === w.id
-                        ? "#C9856A"
-                        : "#9A8F87",
+                    color: selectedWeather === w.id ? "#C9856A" : "#9A8F87",
                   }}
                 >
                   {w.label}
@@ -455,12 +402,8 @@ const selectedDate = useMemo<string>(() => {
           </div>
         </div>
 
-        {/* 기분 */}
         <div>
-          <p
-            className="text-xs font-bold mb-2.5"
-            style={{ color: "#9A8F87" }}
-          >
+          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
             오늘 기분
           </p>
 
@@ -471,10 +414,7 @@ const selectedDate = useMemo<string>(() => {
                 onClick={() => setSelectedMood(m.id)}
                 className="flex flex-col items-center gap-1 py-2.5 rounded-2xl transition-all active:scale-95"
                 style={{
-                  background:
-                    selectedMood === m.id
-                      ? `${m.color}30`
-                      : "#FFFCF8",
+                  background: selectedMood === m.id ? `${m.color}30` : "#FFFCF8",
                   border:
                     selectedMood === m.id
                       ? `1.5px solid ${m.color}`
@@ -482,17 +422,12 @@ const selectedDate = useMemo<string>(() => {
                 }}
                 type="button"
               >
-                <span className="text-xl">
-                  {m.icon}
-                </span>
+                <span className="text-xl">{m.icon}</span>
 
                 <span
                   className="text-xs font-semibold"
                   style={{
-                    color:
-                      selectedMood === m.id
-                        ? "#3D3530"
-                        : "#9A8F87",
+                    color: selectedMood === m.id ? "#3D3530" : "#9A8F87",
                     fontSize: "10px",
                   }}
                 >
@@ -504,41 +439,27 @@ const selectedDate = useMemo<string>(() => {
         </div>
       </div>
 
-      {/* 하단 버튼 */}
       <div
         className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm px-5 pb-8 pt-4"
         style={{
-          background:
-            "linear-gradient(to top, #F8F6F2 80%, transparent)",
+          background: "linear-gradient(to top, #F8F6F2 80%, transparent)",
         }}
       >
-        {error && (
-          <div className="text-red-500 text-sm mb-2">
-            {error}
-          </div>
-        )}
+        {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
 
         <button
           className="w-full py-4 rounded-2xl font-extrabold text-base transition-all active:scale-95"
           style={{
             background: "#C9856A",
             color: "#FFFCF8",
-            boxShadow:
-              "0 4px 16px rgba(201,133,106,0.35)",
-            opacity:
-              loading || !text.trim()
-                ? 0.6
-                : 1,
+            boxShadow: "0 4px 16px rgba(201,133,106,0.35)",
+            opacity: loading || !text.trim() || !canEdit ? 0.6 : 1,
           }}
           onClick={handleSaveDiary}
-          disabled={loading || !text.trim()}
+          disabled={loading || !text.trim() || !canEdit}
           type="button"
         >
-          {loading
-            ? "저장 중..."
-            : isEdit
-              ? "일기 수정하기"
-              : "일기 저장하기"}
+          {loading ? "저장 중..." : isEdit ? "일기 수정하기" : "일기 저장하기"}
         </button>
       </div>
     </div>

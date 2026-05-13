@@ -1,6 +1,9 @@
+// /home/dori/diary-frontend/components/diary-detail-screen.tsx
 "use client"
 
 import { useMemo, useState } from "react"
+
+type DiaryType = "question" | "free"
 
 interface DiaryEntryResponse {
   id: number
@@ -9,6 +12,9 @@ interface DiaryEntryResponse {
   content: string
   weather?: string | null
   mood_tags?: string[]
+  summary_tag?: string | null
+  diary_type?: DiaryType | null
+  question_text?: string | null
   created_at: string
   updated_at: string
 }
@@ -36,6 +42,8 @@ interface DiaryDetailScreenProps {
     content: string
     weather?: string
     mood_tags: string[]
+    diary_type?: DiaryType | null
+    question_text?: string | null
   }) => Promise<void>
   onDeleteDiary: () => Promise<void>
   onGenerateLetterWithPearl?: () => Promise<void>
@@ -79,6 +87,11 @@ export default function DiaryDetailScreen({
     return moodMeta[moodId] || defaultMoodMeta
   }, [moodId])
 
+  const isQuestionDiary =
+    diary.diary_type === "question" || Boolean(diary.question_text)
+
+  const diaryTypeLabel = isQuestionDiary ? "질문형 일기" : "자유 일기"
+
   return (
     <div
       className="flex flex-col h-full font-sans"
@@ -114,14 +127,17 @@ export default function DiaryDetailScreen({
           <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
             {diary.entry_date}의 일기
           </h2>
+
           <div className="flex items-center justify-center gap-1.5 mt-0.5">
             <span className="text-xs" aria-hidden="true">
               {currentMood.icon}
             </span>
+
             <div
               className="w-2.5 h-2.5 rounded-full"
               style={{ background: currentMood.color }}
             />
+
             <span className="text-xs" style={{ color: "#9A8F87" }}>
               {currentMood.label}
             </span>
@@ -132,10 +148,54 @@ export default function DiaryDetailScreen({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-4">
+        <div
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold"
+          style={{
+            background: isQuestionDiary ? "#FFF3E8" : "#EEF3EC",
+            color: isQuestionDiary ? "#C9856A" : "#7D967A",
+            border: isQuestionDiary
+              ? "1.5px solid rgba(201,133,106,0.22)"
+              : "1.5px solid rgba(125,150,122,0.22)",
+          }}
+        >
+          <span aria-hidden="true">{isQuestionDiary ? "💬" : "✍️"}</span>
+          {diaryTypeLabel}
+        </div>
+
+        {isQuestionDiary && (
+          <div>
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <span className="text-base" aria-hidden="true">
+                🦦
+              </span>
+              <p className="text-xs font-bold" style={{ color: "#9A8F87" }}>
+                오늘의 질문
+              </p>
+            </div>
+
+            <div
+              className="px-5 py-4 rounded-3xl"
+              style={{
+                background: "#FFF9F0",
+                border: "1.5px solid rgba(242,196,168,0.65)",
+                boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
+              }}
+            >
+              <p
+                className="text-sm font-bold whitespace-pre-line"
+                style={{ color: "#3D3530", lineHeight: "1.75" }}
+              >
+                {diary.question_text || "저장된 질문 정보가 없어요."}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="text-xs font-bold mb-2 px-1" style={{ color: "#9A8F87" }}>
-            나의 일기
+            {isQuestionDiary ? "내 답변" : "나의 일기"}
           </p>
+
           <div
             className="px-5 py-5 rounded-3xl"
             style={{
@@ -231,6 +291,7 @@ export default function DiaryDetailScreen({
             >
               ⭐
             </div>
+
             <span
               className="text-sm font-semibold"
               style={{ color: starred ? "#C9A060" : "#6B6059" }}
