@@ -83,7 +83,8 @@ function getQuestionUserKey() {
 
   return (
     window.localStorage.getItem("user_id") ||
-    window.localStorage.getItem("access_token") ||
+    window.localStorage.getItem("dori_user_id") ||
+    window.localStorage.getItem("profile_user_id") ||
     "guest"
   )
 }
@@ -286,9 +287,9 @@ export default function CalendarScreen({
       onNavigate("diary", {
         date,
         diary_type: "question",
-        question,
-        questionDate: date,
-        questionSource: "rule_365",
+        initialQuestion: question,
+        initialQuestionDate: date,
+        initialQuestionSource: "rule_365",
       })
 
       setSelectedDate(null)

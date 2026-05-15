@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { getDailyQuestion } from "@/lib/daily-questions"
+import { getQuestionUserKeyFromDashboard } from "@/lib/question-user-key"
 import { useUserPearls } from "../hooks/use-user-pearls"
 
 interface HomeScreenProps {
@@ -68,16 +69,6 @@ function getTodayKey() {
   return `${y}-${m}-${d}`
 }
 
-function getHomeQuestionUserKey(dashboardData?: any) {
-  return (
-    dashboardData?.user?.id ??
-    dashboardData?.user_id ??
-    dashboardData?.profile?.id ??
-    dashboardData?.profile?.user_id ??
-    "guest"
-  )
-}
-
 export default function HomeScreen({
   onNavigate,
   dashboardData,
@@ -97,7 +88,7 @@ export default function HomeScreen({
   })
 
   const questionUserKey = useMemo(
-    () => getHomeQuestionUserKey(dashboardData),
+    () => getQuestionUserKeyFromDashboard(dashboardData),
     [dashboardData]
   )
 
@@ -110,9 +101,9 @@ export default function HomeScreen({
 
   const diaryParams = useMemo(
     () => ({
-      question: todayQuestion,
-      questionDate: todayKey,
-      questionSource: "rule_365",
+      initialQuestion: todayQuestion,
+      initialQuestionDate: todayKey,
+      initialQuestionSource: "rule_365",
     }),
     [todayQuestion, todayKey]
   )
@@ -667,9 +658,22 @@ export default function HomeScreen({
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                console.log("[HOME NAV TRACE]", {
+                  target: item.id,
+                  diaryParams,
+                })
+
+                if (item.id === "diary") {
+                  onNavigate("diary", diaryParams)
+                  return
+                }
+
+                onNavigate(item.id)
+              }}
               className="flex flex-col items-center gap-1.5 transition-all active:scale-90"
               aria-label={item.label}
+              type="button"
             >
               <div
                 className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl"
@@ -685,8 +689,7 @@ export default function HomeScreen({
                 {item.label}
               </span>
             </button>
-          ))}
-        </div>
+          ))}        </div>
       </div>
 
       {showFlowModal && todayFortune && (

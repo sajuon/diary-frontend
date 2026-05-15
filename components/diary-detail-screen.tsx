@@ -52,14 +52,7 @@ interface DiaryDetailScreenProps {
   letterGenerating?: boolean
 }
 
-const moodMeta: Record<
-  string,
-  {
-    label: string
-    color: string
-    icon: string
-  }
-> = {
+const moodMeta: Record<string, { label: string; color: string; icon: string }> = {
   happy: { label: "happy", color: "#F4C97A", icon: "😊" },
   calm: { label: "calm", color: "#A8BBA5", icon: "😌" },
   sad: { label: "sad", color: "#A8C4D4", icon: "😢" },
@@ -93,28 +86,26 @@ export default function DiaryDetailScreen({
   const diaryTypeLabel = isQuestionDiary ? "질문형 일기" : "자유 일기"
 
   const handleOpenQuestionHistory = () => {
-    const params = new URLSearchParams({
+    onNavigate("question-history", {
       date: diary.entry_date,
-      diary_id: String(diary.id),
+      diary_id: diary.id,
       question_id: diary.question_id || "",
       question_text: diary.question_text || "",
     })
-
-    window.location.href = `/question-history?${params.toString()}`
   }
 
   return (
     <div
-      className="flex flex-col h-full font-sans"
+      className="flex h-full flex-col font-sans"
       style={{
         background: "#F8F6F2",
         animation: "slideInRight 0.24s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
       }}
     >
-      <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center justify-between px-5 pb-4 pt-12">
         <button
           onClick={() => onNavigate("calendar")}
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="달력으로 돌아가기"
           type="button"
@@ -127,13 +118,13 @@ export default function DiaryDetailScreen({
             {diary.entry_date}의 일기
           </h2>
 
-          <div className="flex items-center justify-center gap-1.5 mt-0.5">
+          <div className="mt-0.5 flex items-center justify-center gap-1.5">
             <span className="text-xs" aria-hidden="true">
               {currentMood.icon}
             </span>
 
             <div
-              className="w-2.5 h-2.5 rounded-full"
+              className="h-2.5 w-2.5 rounded-full"
               style={{ background: currentMood.color }}
             />
 
@@ -146,9 +137,9 @@ export default function DiaryDetailScreen({
         <div className="w-9" aria-hidden="true" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-4">
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 pb-8">
         <div
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold"
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-extrabold"
           style={{
             background: isQuestionDiary ? "#FFF3E8" : "#EEF3EC",
             color: isQuestionDiary ? "#C9856A" : "#7D967A",
@@ -163,7 +154,7 @@ export default function DiaryDetailScreen({
 
         {isQuestionDiary && (
           <div>
-            <div className="flex items-center gap-2 mb-2 px-1">
+            <div className="mb-2 flex items-center gap-2 px-1">
               <span className="text-base" aria-hidden="true">
                 🦦
               </span>
@@ -173,7 +164,7 @@ export default function DiaryDetailScreen({
             </div>
 
             <div
-              className="px-5 py-4 rounded-3xl"
+              className="rounded-3xl px-5 py-4"
               style={{
                 background: "#FFF9F0",
                 border: "1.5px solid rgba(242,196,168,0.65)",
@@ -181,7 +172,7 @@ export default function DiaryDetailScreen({
               }}
             >
               <p
-                className="text-sm font-bold whitespace-pre-line"
+                className="whitespace-pre-line text-sm font-bold"
                 style={{ color: "#3D3530", lineHeight: "1.75" }}
               >
                 {diary.question_text || "저장된 질문 정보가 없어요."}
@@ -190,7 +181,7 @@ export default function DiaryDetailScreen({
 
             <button
               onClick={handleOpenQuestionHistory}
-              className="w-full mt-3 py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98]"
+              className="mt-3 w-full rounded-2xl py-3.5 text-sm font-extrabold transition-all active:scale-[0.98]"
               style={{
                 background: "#FFFCF8",
                 color: "#C9856A",
@@ -205,12 +196,12 @@ export default function DiaryDetailScreen({
         )}
 
         <div>
-          <p className="text-xs font-bold mb-2 px-1" style={{ color: "#9A8F87" }}>
+          <p className="mb-2 px-1 text-xs font-bold" style={{ color: "#9A8F87" }}>
             {isQuestionDiary ? "내 답변" : "나의 일기"}
           </p>
 
           <div
-            className="px-5 py-5 rounded-3xl"
+            className="rounded-3xl px-5 py-5"
             style={{
               background: "#FFFCF8",
               border: "1.5px solid #E5DDD5",
@@ -218,7 +209,7 @@ export default function DiaryDetailScreen({
             }}
           >
             <p
-              className="text-sm whitespace-pre-line"
+              className="whitespace-pre-line text-sm"
               style={{ color: "#3D3530", lineHeight: "1.85" }}
             >
               {diary.content}
@@ -229,7 +220,7 @@ export default function DiaryDetailScreen({
         {!isQuestionDiary && (
           <>
             <div>
-              <div className="flex items-center gap-2 mb-2 px-1">
+              <div className="mb-2 flex items-center gap-2 px-1">
                 <span className="text-base" aria-hidden="true">
                   🦦
                 </span>
@@ -239,7 +230,7 @@ export default function DiaryDetailScreen({
               </div>
 
               <div
-                className="px-5 py-5 rounded-3xl"
+                className="rounded-3xl px-5 py-5"
                 style={{
                   background: "#FFF9F0",
                   border: "1.5px solid rgba(242,196,168,0.55)",
@@ -248,7 +239,7 @@ export default function DiaryDetailScreen({
               >
                 {letter ? (
                   <p
-                    className="text-sm whitespace-pre-line"
+                    className="whitespace-pre-line text-sm"
                     style={{ color: "#3D3530", lineHeight: "1.9" }}
                   >
                     {letter.content}
@@ -256,7 +247,7 @@ export default function DiaryDetailScreen({
                 ) : (
                   <div className="text-center">
                     <p
-                      className="text-sm leading-relaxed mb-4"
+                      className="mb-4 text-sm leading-relaxed"
                       style={{ color: "#6B625C" }}
                     >
                       아직 해도리 답장이 없어요.
@@ -268,7 +259,7 @@ export default function DiaryDetailScreen({
                       <button
                         onClick={onGenerateLetterWithPearl}
                         disabled={letterGenerating}
-                        className="w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="w-full rounded-2xl py-3.5 text-sm font-extrabold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                         style={{
                           background: "#C9856A",
                           color: "#FFFCF8",
@@ -287,7 +278,7 @@ export default function DiaryDetailScreen({
             </div>
 
             <div
-              className="px-5 py-5 rounded-3xl"
+              className="rounded-3xl px-5 py-5"
               style={{
                 background: "#FFFCF8",
                 border: "1.5px solid #E5DDD5",
@@ -296,12 +287,12 @@ export default function DiaryDetailScreen({
             >
               <button
                 onClick={() => setStarred((s) => !s)}
-                className="flex items-center gap-3 w-full mb-4 transition-all active:scale-[0.97]"
+                className="mb-4 flex w-full items-center gap-3 transition-all active:scale-[0.97]"
                 aria-label={starred ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
                 type="button"
               >
                 <div
-                  className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors"
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl transition-colors"
                   style={{ background: starred ? "#FFF3D0" : "#EDE8E0" }}
                 >
                   ⭐
@@ -321,16 +312,16 @@ export default function DiaryDetailScreen({
               />
 
               <p
-                className="text-xs font-semibold mb-3 text-center"
+                className="mb-3 text-center text-xs font-semibold"
                 style={{ color: "#9A8F87" }}
               >
                 해도리 피드백이 도움이 되었나요?
               </p>
 
-              <div className="flex gap-3 justify-center mb-4">
+              <div className="mb-4 flex justify-center gap-3">
                 <button
                   onClick={() => setFeedback(feedback === "like" ? null : "like")}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
+                  className="flex items-center gap-2 rounded-2xl px-5 py-2.5 transition-all active:scale-95"
                   style={{
                     background: feedback === "like" ? "#D4EACF" : "#EDE8E0",
                   }}
@@ -344,7 +335,7 @@ export default function DiaryDetailScreen({
                   onClick={() =>
                     setFeedback(feedback === "dislike" ? null : "dislike")
                   }
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
+                  className="flex items-center gap-2 rounded-2xl px-5 py-2.5 transition-all active:scale-95"
                   style={{
                     background: feedback === "dislike" ? "#FDDDD8" : "#EDE8E0",
                   }}

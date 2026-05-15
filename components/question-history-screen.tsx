@@ -39,11 +39,11 @@ function getDayLabel(dateString: string) {
 function formatKoreanDate(dateString: string) {
   const date = new Date(dateString)
   const year = date.getFullYear()
-  const month = date.getMonth() + 1
-  const day = date.getDate()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
   const dayLabel = getDayLabel(dateString)
 
-  return `${year}년 ${month}월 ${day}일 ${dayLabel}요일`
+  return `${year}. ${month}. ${day} ${dayLabel}요일`
 }
 
 function getMonthDayFromDate(dateString?: string) {
@@ -115,19 +115,25 @@ export default function QuestionHistoryScreen({
 
   return (
     <div
-      className="flex flex-col h-full font-sans"
+      className="flex h-full flex-col font-sans"
       style={{
-        background: "#F8F6F2",
+        background:
+          "linear-gradient(180deg, #F8F3EC 0%, #F7F1EA 45%, #F5EFE7 100%)",
         animation: "slideInRight 0.24s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
       }}
     >
-      <div className="flex items-center justify-between px-5 pt-12 pb-4 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center justify-between px-5 pb-4 pt-12">
         <button
           onClick={() =>
             onNavigate("diary-detail", { date, diary_type: "question" })
           }
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-lg transition-all active:scale-95"
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+            color: "#6F5F55",
+            boxShadow: "0 2px 10px rgba(95, 76, 62, 0.05)",
+          }}
           aria-label="돌아가기"
           type="button"
         >
@@ -138,8 +144,8 @@ export default function QuestionHistoryScreen({
           <h2 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
             지난 답변 모아보기
           </h2>
-          <p className="text-xs mt-0.5" style={{ color: "#9A8F87" }}>
-            같은 날짜의 질문 기록
+          <p className="mt-0.5 text-xs" style={{ color: "#9A8F87" }}>
+            같은 날짜에 남긴 나의 기록
           </p>
         </div>
 
@@ -148,19 +154,19 @@ export default function QuestionHistoryScreen({
 
       <div className="flex-1 overflow-y-auto px-5 pb-8">
         <div
-          className="rounded-[28px] px-5 py-5 mb-4"
+          className="mb-5 rounded-[30px] px-5 py-5"
           style={{
             background: "#FFF9F0",
-            border: "1.5px solid rgba(242,196,168,0.65)",
-            boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
+            border: "1.5px solid rgba(242, 196, 168, 0.7)",
+            boxShadow: "0 8px 24px rgba(201, 133, 106, 0.08)",
           }}
         >
-          <p className="text-xs font-bold mb-2" style={{ color: "#C9856A" }}>
-            오늘의 질문
+          <p className="mb-2 text-xs font-extrabold" style={{ color: "#C9856A" }}>
+            ✦ 오늘의 질문
           </p>
 
           <p
-            className="text-sm font-extrabold whitespace-pre-line"
+            className="whitespace-pre-line text-sm font-extrabold"
             style={{ color: "#3D3530", lineHeight: "1.75" }}
           >
             {displayQuestionText || "질문 정보를 불러오지 못했어요."}
@@ -207,60 +213,78 @@ export default function QuestionHistoryScreen({
         )}
 
         {!loading && !error && entries.length > 0 && (
-          <div className="space-y-4">
+          <div className="relative ml-1 space-y-5 pl-6">
+            <div
+              className="absolute bottom-4 left-[5px] top-4 w-px"
+              style={{ background: "#E7D8CA" }}
+            />
+
             {entries.map((entry, index) => {
               const isCurrentDiary = diary_id ? entry.id === diary_id : false
 
               return (
-                <div
-                  key={entry.id}
-                  className="rounded-[28px] px-5 py-5"
-                  style={{
-                    background: isCurrentDiary ? "#FFFCF8" : "#FDF8F1",
-                    border: isCurrentDiary
-                      ? "1.5px solid rgba(201,133,106,0.35)"
-                      : "1.5px solid #E5DDD5",
-                    boxShadow: "0 4px 14px rgba(0,0,0,0.045)",
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <p
-                        className="text-xs font-bold"
-                        style={{ color: "#C9856A" }}
-                      >
-                        {isCurrentDiary
-                          ? "현재 보고 있는 답변"
-                          : index === 0
-                            ? "가장 최근 답변"
-                            : "지난 답변"}
-                      </p>
+                <div key={entry.id} className="relative">
+                  <div
+                    className="absolute -left-[25px] top-6 h-3 w-3 rounded-full"
+                    style={{
+                      background: isCurrentDiary ? "#C9856A" : "#D9B9A5",
+                      boxShadow: isCurrentDiary
+                        ? "0 0 0 5px rgba(201, 133, 106, 0.16)"
+                        : "0 0 0 4px rgba(217, 185, 165, 0.16)",
+                    }}
+                  />
 
-                      <p
-                        className="text-sm font-extrabold mt-1"
-                        style={{ color: "#3D3530" }}
+                  <div
+                    className="rounded-[30px] px-5 py-5"
+                    style={{
+                      background: isCurrentDiary ? "#FFFCF8" : "#FDF8F1",
+                      border: isCurrentDiary
+                        ? "1.5px solid rgba(201, 133, 106, 0.55)"
+                        : "1.5px solid #E5DDD5",
+                      boxShadow: isCurrentDiary
+                        ? "0 8px 24px rgba(201, 133, 106, 0.12)"
+                        : "0 4px 14px rgba(0, 0, 0, 0.04)",
+                    }}
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p
+                          className="text-xs font-extrabold"
+                          style={{ color: "#C9856A" }}
+                        >
+                          {isCurrentDiary
+                            ? "현재 보고 있는 답변"
+                            : index === 0
+                              ? "가장 최근 답변"
+                              : "지난 답변"}
+                        </p>
+
+                        <p
+                          className="mt-1 text-sm font-extrabold tracking-wide"
+                          style={{ color: "#3D3530" }}
+                        >
+                          {formatKoreanDate(entry.entry_date)}
+                        </p>
+                      </div>
+
+                      <span
+                        className="rounded-full px-2.5 py-1 text-[10px] font-extrabold"
+                        style={{
+                          background: isCurrentDiary ? "#FFF0E6" : "#FFF7EE",
+                          color: "#C9856A",
+                        }}
                       >
-                        {formatKoreanDate(entry.entry_date)}
-                      </p>
+                        Q
+                      </span>
                     </div>
 
-                    <span
-                      className="px-2 py-1 rounded-full text-[10px] font-extrabold"
-                      style={{
-                        background: "#FFF3E8",
-                        color: "#C9856A",
-                      }}
+                    <p
+                      className="whitespace-pre-line text-sm"
+                      style={{ color: "#3D3530", lineHeight: "1.9" }}
                     >
-                      Q
-                    </span>
+                      {entry.content}
+                    </p>
                   </div>
-
-                  <p
-                    className="text-sm whitespace-pre-line"
-                    style={{ color: "#3D3530", lineHeight: "1.85" }}
-                  >
-                    {entry.content}
-                  </p>
                 </div>
               )
             })}

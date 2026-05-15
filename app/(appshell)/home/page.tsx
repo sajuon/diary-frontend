@@ -91,6 +91,34 @@ function buildUrlWithParams(
   return `${pathname}?${queryString}`
 }
 
+function buildDiaryUrl(params?: Record<string, unknown>) {
+  if (!params || Object.keys(params).length === 0) {
+    return "/diary"
+  }
+
+  const searchParams = new URLSearchParams()
+
+  if (params.initialQuestion) {
+    searchParams.set("question", String(params.initialQuestion))
+  }
+
+  if (params.initialQuestionDate) {
+    searchParams.set("questionDate", String(params.initialQuestionDate))
+  }
+
+  if (params.initialQuestionSource) {
+    searchParams.set("questionSource", String(params.initialQuestionSource))
+  }
+
+  const queryString = searchParams.toString()
+
+  if (!queryString) {
+    return "/diary"
+  }
+
+  return `/diary?${queryString}`
+}
+
 export default function HomePage() {
   const router = useRouter()
 
@@ -237,6 +265,11 @@ export default function HomePage() {
   }
 
   const navigate = (screen: string, params?: Record<string, unknown>) => {
+    console.log("[HOME PAGE NAVIGATE TRACE]", {
+      screen,
+      params,
+    })
+
     if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
       return
@@ -249,7 +282,7 @@ export default function HomePage() {
     }
 
     if (screen === "diary") {
-      router.push(buildUrlWithParams("/diary", params))
+      router.push(buildDiaryUrl(params))
       return
     }
 

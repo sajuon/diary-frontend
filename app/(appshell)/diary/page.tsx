@@ -12,7 +12,18 @@ export default function DiaryPage() {
   const questionDate = searchParams.get("questionDate")
   const questionSource = searchParams.get("questionSource")
 
+  console.log("[DIARY PAGE TRACE]", {
+    question,
+    questionDate,
+    questionSource,
+  })
+
   const navigate = (screen: string, params?: Record<string, unknown>) => {
+    console.log("[DIARY PAGE NAVIGATE TRACE]", {
+      screen,
+      params,
+    })
+
     if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
       return
@@ -21,6 +32,34 @@ export default function DiaryPage() {
     if (screen === "letter-detail" && params?.letter) {
       const letterId = (params.letter as any).id || params.letter
       router.push(`/letter-detail/${letterId}`)
+      return
+    }
+
+    if (screen === "diary") {
+      const query = new URLSearchParams()
+
+      if (params?.initialQuestion) {
+        query.set(
+          "question",
+          String(params.initialQuestion)
+        )
+      }
+
+      if (params?.initialQuestionDate) {
+        query.set(
+          "questionDate",
+          String(params.initialQuestionDate)
+        )
+      }
+
+      if (params?.initialQuestionSource) {
+        query.set(
+          "questionSource",
+          String(params.initialQuestionSource)
+        )
+      }
+
+      router.push(`/diary?${query.toString()}`)
       return
     }
 

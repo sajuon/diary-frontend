@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
 import { getDailyQuestion } from "@/lib/daily-questions"
+import { getQuestionUserKeyFromStorage } from "@/lib/question-user-key"
 import {
   getDiaryMonthKeyFromDate,
   invalidateDiaryMonth,
@@ -79,16 +80,6 @@ function dateStringToLocalDate(dateString: string) {
 function getQuestionIdFromDate(dateString: string) {
   const [, month, day] = dateString.split("-")
   return `${month}-${day}`
-}
-
-function getQuestionUserKey() {
-  if (typeof window === "undefined") return "guest"
-
-  return (
-    window.localStorage.getItem("user_id") ||
-    window.localStorage.getItem("access_token") ||
-    "guest"
-  )
 }
 
 export default function DiaryScreen({
@@ -191,7 +182,7 @@ export default function DiaryScreen({
     }
 
     const dailyQuestion = getDailyQuestion({
-      userKey: getQuestionUserKey(),
+      userKey: getQuestionUserKeyFromStorage(),
       date: dateStringToLocalDate(selectedDate),
     })
 
@@ -452,7 +443,8 @@ export default function DiaryScreen({
                 onClick={() => setSelectedWeather(w.id)}
                 className="flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all active:scale-95"
                 style={{
-                  background: selectedWeather === w.id ? "#FFFCF8" : "transparent",
+                  background:
+                    selectedWeather === w.id ? "#FFFCF8" : "transparent",
                   border:
                     selectedWeather === w.id
                       ? "1.5px solid #C9856A"

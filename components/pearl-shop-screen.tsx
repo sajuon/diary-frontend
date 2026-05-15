@@ -1,201 +1,224 @@
+// /home/dori/diary-frontend/components/pearl-shop-screen.tsx
 "use client"
 
-import { useState } from "react"
-import { useUserPearls } from "../hooks/use-user-pearls"
+import Image from "next/image"
+
+type ShopItem = {
+  id: number
+  name?: string
+  title?: string
+  description?: string
+  price?: number
+  pearl_price?: number
+  item_type?: string
+  image_url?: string
+  thumbnail_url?: string
+  [key: string]: unknown
+}
+
+type UserPurchase = {
+  id?: number
+  item_id?: number
+  shop_item_id?: number
+  user_id?: number
+  purchased_at?: string
+  item?: ShopItem
+  [key: string]: unknown
+}
 
 interface PearlShopScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
+
+  items: ShopItem[]
+  purchases: UserPurchase[]
+  onPurchase: (itemId: number) => Promise<void>
 }
 
-const packages = [
-  { id: 1, pearls: 100, price: "5,000원", tag: null },
-  { id: 2, pearls: 150, price: "7,000원", tag: null },
-  { id: 3, pearls: 200, price: "9,000원", tag: "인기" },
-  { id: 4, pearls: 250, price: "11,000원", tag: null },
-  { id: 5, pearls: 300, price: "13,000원", tag: "가장 많이" }
-];
+function isPurchased(itemId: number, purchases: UserPurchase[]) {
+  return purchases.some(
+    (purchase) =>
+      purchase.item_id === itemId ||
+      purchase.shop_item_id === itemId ||
+      purchase.item?.id === itemId
+  )
+}
 
-const PearlIcon = ({ size = 28 }: { size?: number }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 28 28"
-    fill="none"
-    aria-hidden="true"
-  >
-    <circle
-      cx="14"
-      cy="14"
-      r="13"
-      fill="url(#pearl-grad)"
-      stroke="#D4A96A"
-      strokeWidth="0.8"
-    />
-    <ellipse cx="10.5" cy="10" rx="4" ry="2.5" fill="white" opacity="0.45" />
-    <defs>
-      <radialGradient id="pearl-grad" cx="35%" cy="30%" r="65%">
-        <stop offset="0%" stopColor="#EDD5A0" />
-        <stop offset="100%" stopColor="#C9A060" />
-      </radialGradient>
-    </defs>
-  </svg>
-)
-
-function PearlShopScreen({ onNavigate }: PearlShopScreenProps) {
-  const pearls = useUserPearls()
-  const [purchased, setPurchased] = useState<number | null>(null)
-
-  const handlePurchase = (pkg: typeof packages[0]) => {
-    setPurchased(pkg.id)
-    // setBalance((prev) => prev + pkg.pearls) // 만약 setBalance가 필요하다면 정의 필요
-    setTimeout(() => setPurchased(null), 1600)
-  }
-
+export default function PearlShopScreen({
+  onNavigate,
+  items,
+  purchases,
+  onPurchase,
+}: PearlShopScreenProps) {
   return (
     <div
-      className="flex flex-col h-full font-sans"
-      style={{ background: "#F8F6F2", animation: "slideInRight 0.24s ease-out" }}
+      className="min-h-screen px-5 pt-12 pb-28"
+      style={{ background: "#F8F6F2" }}
     >
-      {/* Status bar spacer */}
-      <div style={{ height: "50px" }} />
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-1 pb-4">
+      <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => onNavigate("home")}
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
-          aria-label="뒤로 가기"
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+          }}
+          type="button"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#3D3530"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          ←
         </button>
 
-        <h1 className="text-base font-extrabold" style={{ color: "#3D3530" }}>
-          진주 상점
-        </h1>
+        <div className="text-center">
+          <h1
+            className="text-lg font-extrabold"
+            style={{ color: "#3D3530" }}
+          >
+            진주 상점
+          </h1>
 
-        {/* Current balance */}
-        <div
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
-        >
-          <PearlIcon size={16} />
-          <span className="text-sm font-bold" style={{ color: "#3D3530" }}>
-            {pearls}
-          </span>
+          <p className="text-xs mt-0.5" style={{ color: "#9A8F87" }}>
+            진주로 테마를 구매해보세요
+          </p>
         </div>
+
+        <div className="w-9" />
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-5 pb-8">
-
-        {/* Description card */}
+      {items.length === 0 ? (
         <div
-          className="rounded-2xl p-4 mb-6 flex items-center gap-3"
-          style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
+          className="rounded-3xl p-8 text-center"
+          style={{
+            background: "#FFFCF8",
+            border: "1.5px solid #E5DDD5",
+          }}
         >
-          <PearlIcon size={36} />
-          <div>
-            <p className="text-sm font-bold leading-snug" style={{ color: "#3D3530" }}>
-              진주로 해도리 방을 꾸며보세요
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: "#9A8F87" }}>
-              벽지, 가구, 소품을 상점에서 구매할 수 있어요
-            </p>
-          </div>
-        </div>
+          <p
+            className="text-sm font-bold"
+            style={{ color: "#3D3530" }}
+          >
+            아직 등록된 상품이 없어요.
+          </p>
 
-        {/* Package list */}
-        <div className="space-y-3">
-          {packages.map((pkg) => {
-            const isActive = purchased === pkg.id
+          <p
+            className="text-xs mt-2"
+            style={{ color: "#9A8F87" }}
+          >
+            해도리가 새로운 테마를 준비 중이에요.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {items.map((item) => {
+            const purchased = isPurchased(item.id, purchases)
+
             return (
               <div
-                key={pkg.id}
-                className="rounded-2xl px-4 py-4 flex items-center gap-4 transition-all"
+                key={item.id}
+                className="rounded-3xl overflow-hidden"
                 style={{
-                  background: isActive ? "#FFF5EC" : "#FFFCF8",
-                  border: isActive ? "1.5px solid #F2C4A8" : "1.5px solid #E5DDD5",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-                  transform: isActive ? "scale(0.98)" : "scale(1)",
+                  background: "#FFFCF8",
+                  border: "1.5px solid #E5DDD5",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.05)",
                 }}
               >
-                {/* Pearl icon */}
                 <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "#F5EDD8" }}
-                >
-                  <PearlIcon size={28} />
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-extrabold" style={{ color: "#3D3530" }}>
-                      {pkg.pearls} 진주
-                    </span>
-                    {pkg.tag && (
-                      <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                        style={{ background: "#F2C4A8", color: "#C9856A" }}
-                      >
-                        {pkg.tag}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm mt-0.5" style={{ color: "#9A8F87" }}>
-                    {pkg.price}
-                  </p>
-                </div>
-
-                {/* Purchase button */}
-                <button
-                  onClick={() => handlePurchase(pkg)}
-                  disabled={isActive}
-                  className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+                  className="relative w-full aspect-square"
                   style={{
-                    background: isActive ? "#A8BBA5" : "#C9856A",
-                    color: "#FFFCF8",
-                    boxShadow: isActive ? "none" : "0 2px 8px rgba(201,133,106,0.25)",
+                    background: "#F3EEE8",
                   }}
-                  aria-label={`${pkg.pearls} 진주 구매`}
                 >
-                  {isActive ? "완료" : "구매"}
-                </button>
+                  {item.image_url || item.thumbnail_url ? (
+                    <Image
+                      src={
+                        (item.image_url as string) ||
+                        (item.thumbnail_url as string)
+                      }
+                      alt={
+                        (item.title as string) ||
+                        (item.name as string) ||
+                        "상품 이미지"
+                      }
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-5xl">
+                      🎁
+                    </div>
+                  )}
+
+                  {purchased && (
+                    <div
+                      className="absolute top-3 right-3 px-2 py-1 rounded-full text-[10px] font-extrabold"
+                      style={{
+                        background: "#D4EACF",
+                        color: "#55724F",
+                      }}
+                    >
+                      구매완료
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4">
+                  <h2
+                    className="text-sm font-extrabold leading-snug"
+                    style={{ color: "#3D3530" }}
+                  >
+                    {(item.title as string) ||
+                      (item.name as string) ||
+                      "이름 없는 상품"}
+                  </h2>
+
+                  <p
+                    className="text-xs leading-relaxed mt-2 min-h-[36px]"
+                    style={{ color: "#8A7E76" }}
+                  >
+                    {(item.description as string) ||
+                      "해도리가 준비한 특별한 테마예요."}
+                  </p>
+
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{
+                          background:
+                            "radial-gradient(circle at 35% 35%, #EDD5A0, #C9A060)",
+                        }}
+                      />
+
+                      <span
+                        className="text-sm font-extrabold"
+                        style={{ color: "#3D3530" }}
+                      >
+                        {Number(
+                          item.pearl_price || item.price || 0
+                        ).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => onPurchase(item.id)}
+                      disabled={purchased}
+                      className="px-4 py-2 rounded-2xl text-xs font-extrabold transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        background: purchased ? "#EDE8E0" : "#C9856A",
+                        color: purchased ? "#8A7E76" : "#FFFCF8",
+                        boxShadow: purchased
+                          ? "none"
+                          : "0 4px 14px rgba(201,133,106,0.25)",
+                      }}
+                      type="button"
+                    >
+                      {purchased ? "보유중" : "구매"}
+                    </button>
+                  </div>
+                </div>
               </div>
             )
           })}
         </div>
-
-        {/* Footer note */}
-        <p
-          className="text-center text-xs mt-6 leading-relaxed"
-          style={{ color: "#C4B8B0" }}
-        >
-          진주는 환불되지 않아요.{"\n"}결제 문의는 설정 {">"} 고객 지원에서 도와드려요.
-        </p>
-      </div>
-
-      <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to   { transform: translateX(0);    opacity: 1; }
-        }
-      `}</style>
+      )}
     </div>
   )
 }
-
-export default PearlShopScreen

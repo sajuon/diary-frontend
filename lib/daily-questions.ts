@@ -432,19 +432,6 @@ function getMonthDayKey(date: Date) {
   return `${month}-${day}`
 }
 
-function getDayOfYear(date: Date) {
-  const start = new Date(date.getFullYear(), 0, 0)
-
-  const diff =
-    date.getTime() -
-    start.getTime() +
-    (start.getTimezoneOffset() - date.getTimezoneOffset()) *
-      60 *
-      1000
-
-  return Math.floor(diff / (1000 * 60 * 60 * 24))
-}
-
 function hashString(value: string) {
   let hash = 0
 
@@ -465,15 +452,14 @@ export function getDailyQuestion({
   userKey = "guest",
   date = new Date(),
 }: GetDailyQuestionParams = {}) {
-  // 특수 날짜 질문 우선
-  const specialQuestion =
-    SPECIAL_DATE_QUESTIONS[getMonthDayKey(date)]
+  const monthDayKey = getMonthDayKey(date)
+
+  const specialQuestion = SPECIAL_DATE_QUESTIONS[monthDayKey]
 
   if (specialQuestion) {
     return specialQuestion
   }
 
-  // ✅ 타입 오류 해결
   const questionCount: number = DAILY_QUESTIONS.length
 
   if (questionCount <= 0) {
@@ -482,15 +468,10 @@ export function getDailyQuestion({
 
   const safeUserKey = String(userKey || "guest")
 
-  const dayOfYear = getDayOfYear(date)
+  const userOffset = hashString(safeUserKey) % questionCount
+  const dateOffset = hashString(monthDayKey) % questionCount
 
-  // 사용자마다 질문 순서 달라짐
-  const userOffset =
-    hashString(safeUserKey) % questionCount
-
-  // 날짜 + 사용자 offset 기반 순환
-  const index =
-    (dayOfYear - 1 + userOffset) % questionCount
+  const index = (dateOffset + userOffset) % questionCount
 
   return DAILY_QUESTIONS[index]
 }

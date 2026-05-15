@@ -116,6 +116,30 @@ export default function DiaryDetailPage() {
       return
     }
 
+    if (screen === "question-history") {
+      const query = new URLSearchParams()
+
+      if (typeof params?.date === "string") {
+        query.set("date", params.date)
+      }
+
+      if (typeof params?.diary_id === "number") {
+        query.set("diary_id", String(params.diary_id))
+      }
+
+      if (typeof params?.question_id === "string") {
+        query.set("question_id", params.question_id)
+      }
+
+      if (typeof params?.question_text === "string") {
+        query.set("question_text", params.question_text)
+      }
+
+      const queryString = query.toString()
+      router.push(queryString ? `/question-history?${queryString}` : "/question-history")
+      return
+    }
+
     router.push(`/${screen}`)
   }
 
