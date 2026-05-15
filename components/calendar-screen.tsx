@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
-import { apiClient } from "@/lib/api"
+import { apiClient, type DiaryType } from "@/lib/api"
 import { getDailyQuestion } from "@/lib/daily-questions"
 import {
   clearDiaryMonthInvalidation,
@@ -25,14 +25,16 @@ type DiaryApiItem = {
   weather?: string | null
   mood_tags?: string[] | null
   summary_tag?: string | null
+  diary_type?: DiaryType | null
+  question_text?: string | null
   created_at: string
   updated_at: string
 }
 
 type DiaryCalendarItem = {
-  mood: string
-  weather: string
-  label: string
+  entries: DiaryApiItem[]
+  question?: DiaryApiItem
+  free?: DiaryApiItem
 }
 
 type DiaryMonthCache = Record<string, DiaryApiItem[]>
@@ -86,7 +88,16 @@ function getQuestionUserKey() {
   )
 }
 
+function normalizeDiaryType(value?: DiaryType | null): DiaryType {
+  return value === "question" ? "question" : "free"
+}
+
 function getDiaryLabel(entry: DiaryApiItem) {
+  if (normalizeDiaryType(entry.diary_type) === "question") {
+    const question = (entry.question_text || "").replace(/\s+/g, " ").trim()
+    if (question) return question.length > 8 ? `${question.slice(0, 8)}…` : question
+  }
+
   const summaryTag = (entry.summary_tag || "").trim()
   if (summaryTag) return summaryTag
 
@@ -102,11 +113,20 @@ function buildDiaryMap(data: DiaryApiItem[]): Record<number, DiaryCalendarItem> 
 
   data.forEach((entry) => {
     const day = new Date(entry.entry_date).getDate()
+    const diaryType = normalizeDiaryType(entry.diary_type)
 
-    diaryMap[day] = {
-      mood: entry.mood_tags?.[0] || "calm",
-      weather: entry.weather || "sunny",
-      label: getDiaryLabel(entry),
+    if (!diaryMap[day]) {
+      diaryMap[day] = {
+        entries: [],
+      }
+    }
+
+    diaryMap[day].entries.push(entry)
+
+    if (diaryType === "question") {
+      diaryMap[day].question = entry
+    } else {
+      diaryMap[day].free = entry
     }
   })
 
@@ -129,9 +149,7 @@ export default function CalendarScreen({
   const [month, setMonth] = useState<number>(startMonth)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedEmptyDate, setSelectedEmptyDate] = useState<string | null>(
-    null
-  )
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [futureDate, setFutureDate] = useState<string | null>(null)
 
   const [monthCache, setMonthCache] = useState<DiaryMonthCache>({
@@ -149,14 +167,17 @@ export default function CalendarScreen({
     return buildDiaryMap(currentMonthDiaries)
   }, [currentMonthDiaries])
 
+  const selectedEntryGroup = useMemo(() => {
+    if (!selectedDate) return null
+    const day = Number(selectedDate.split("-")[2])
+    return diaries[day] ?? null
+  }, [selectedDate, diaries])
+
   useEffect(() => {
     let cancelled = false
 
     const invalidated = isDiaryMonthInvalidated(targetMonthKey)
-    const hasCache = Object.prototype.hasOwnProperty.call(
-      monthCache,
-      targetMonthKey
-    )
+    const hasCache = Object.prototype.hasOwnProperty.call(monthCache, targetMonthKey)
 
     const loadMonthDiaries = async () => {
       if (invalidated && hasCache) {
@@ -255,27 +276,44 @@ export default function CalendarScreen({
     }
   }
 
-  const handleWriteDiaryFromModal = () => {
-    if (!selectedEmptyDate) return
+  const handleWriteDiary = (date: string, diaryType: DiaryType) => {
+    if (diaryType === "question") {
+      const question = getDailyQuestion({
+        userKey: getQuestionUserKey(),
+        date: dateStringToLocalDate(date),
+      })
 
-    const question = getDailyQuestion({
-      userKey: getQuestionUserKey(),
-      date: dateStringToLocalDate(selectedEmptyDate),
-    })
+      onNavigate("diary", {
+        date,
+        diary_type: "question",
+        question,
+        questionDate: date,
+        questionSource: "rule_365",
+      })
+
+      setSelectedDate(null)
+      return
+    }
 
     onNavigate("diary", {
-      date: selectedEmptyDate,
-      question,
-      questionDate: selectedEmptyDate,
-      questionSource: "rule_365",
+      date,
+      diary_type: "free",
     })
 
-    setSelectedEmptyDate(null)
+    setSelectedDate(null)
+  }
+
+  const handleOpenDiaryDetail = (date: string, diaryType: DiaryType) => {
+    onNavigate("diary-detail", {
+      date,
+      diary_type: diaryType,
+    })
+
+    setSelectedDate(null)
   }
 
   const daysInMonth = new Date(year, month, 0).getDate()
-  const isCurrentMonth =
-    year === now.getFullYear() && month === now.getMonth() + 1
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
   const today = now.getDate()
 
   const startDay = new Date(
@@ -344,8 +382,7 @@ export default function CalendarScreen({
               key={d}
               className="text-center text-xs font-bold py-1"
               style={{
-                color:
-                  i === 0 ? "#F2A8A8" : i === 6 ? "#A8BBA5" : "#9A8F87",
+                color: i === 0 ? "#F2A8A8" : i === 6 ? "#A8BBA5" : "#9A8F87",
               }}
             >
               {d}
@@ -357,28 +394,27 @@ export default function CalendarScreen({
           {cells.map((day, idx) => {
             if (!day) return <div key={`empty-${idx}`} />
 
-            const entry = diaries[day]
+            const entryGroup = diaries[day]
             const isToday = isCurrentMonth && day === today
             const colIdx = idx % 7
-            const hasEntry = Boolean(entry)
+            const hasEntry = Boolean(entryGroup)
             const dateStr = formatDate(year, month, day)
             const isFutureDate = dateStr > todayDateStr
+
+            const displayEntry = entryGroup?.free ?? entryGroup?.question ?? null
+            const hasQuestion = Boolean(entryGroup?.question)
+            const hasFree = Boolean(entryGroup?.free)
 
             return (
               <button
                 key={day}
                 onClick={() => {
-                  if (hasEntry) {
-                    onNavigate("diary-detail", { date: dateStr })
-                    return
-                  }
-
-                  if (isFutureDate) {
+                  if (isFutureDate && !hasEntry) {
                     setFutureDate(dateStr)
                     return
                   }
 
-                  setSelectedEmptyDate(dateStr)
+                  setSelectedDate(dateStr)
                 }}
                 className="flex flex-col items-center rounded-2xl pt-2 pb-2.5 transition-all active:scale-95"
                 style={{
@@ -397,7 +433,7 @@ export default function CalendarScreen({
                         ? "1.5px solid #DDD5CC"
                         : "1.5px dashed #DED5CC",
                   boxShadow: hasEntry ? "0 1px 6px rgba(0,0,0,0.04)" : "none",
-                  minHeight: hasEntry ? "72px" : "54px",
+                  minHeight: hasEntry ? "86px" : "54px",
                   cursor: "pointer",
                   opacity: isFutureDate && !hasEntry ? 0.7 : 1,
                   WebkitTapHighlightColor: "transparent",
@@ -421,18 +457,48 @@ export default function CalendarScreen({
                   {day}
                 </span>
 
-                {entry ? (
+                {displayEntry ? (
                   <>
                     <span className="text-sm leading-none">
-                      {weatherIcons[entry.weather] || "☀️"}
+                      {weatherIcons[displayEntry.weather || "sunny"] || "☀️"}
                     </span>
 
                     <div
                       className="w-2 h-2 rounded-full mt-1"
                       style={{
-                        background: moodColors[entry.mood] || "#A8BBA5",
+                        background:
+                          moodColors[displayEntry.mood_tags?.[0] || "calm"] ||
+                          "#A8BBA5",
                       }}
                     />
+
+                    <div className="flex gap-0.5 mt-1">
+                      {hasQuestion && (
+                        <span
+                          className="px-1 rounded-full font-bold"
+                          style={{
+                            fontSize: "8px",
+                            background: "#FFF3E8",
+                            color: "#C9856A",
+                          }}
+                        >
+                          Q
+                        </span>
+                      )}
+
+                      {hasFree && (
+                        <span
+                          className="px-1 rounded-full font-bold"
+                          style={{
+                            fontSize: "8px",
+                            background: "#EEF3EC",
+                            color: "#7D967A",
+                          }}
+                        >
+                          F
+                        </span>
+                      )}
+                    </div>
 
                     <span
                       className="mt-0.5 text-center leading-tight px-0.5"
@@ -445,7 +511,7 @@ export default function CalendarScreen({
                         textOverflow: "ellipsis",
                       }}
                     >
-                      {entry.label}
+                      {getDiaryLabel(displayEntry)}
                     </span>
                   </>
                 ) : (
@@ -504,22 +570,24 @@ export default function CalendarScreen({
         </div>
       </div>
 
-      {selectedEmptyDate && (
+      {selectedDate && (
         <CalendarModal
-          icon="🦦"
-          title="오늘의 일기를 작성해볼까요?"
+          icon="📖"
+          title="어떤 일기를 열까요?"
           description={
-            <>
-              {selectedEmptyDate}에는 아직 일기가 없어요.
-              <br />
-              해도리가 그날의 이야기를 기다리고 있어요.
-            </>
+            <DiaryTypeSelectContent
+              date={selectedDate}
+              questionEntry={selectedEntryGroup?.question}
+              freeEntry={selectedEntryGroup?.free}
+              onOpenQuestion={() => handleOpenDiaryDetail(selectedDate, "question")}
+              onOpenFree={() => handleOpenDiaryDetail(selectedDate, "free")}
+              onWriteQuestion={() => handleWriteDiary(selectedDate, "question")}
+              onWriteFree={() => handleWriteDiary(selectedDate, "free")}
+            />
           }
-          primaryText="일기쓰러가기"
-          onPrimary={handleWriteDiaryFromModal}
-          secondaryText="나중에 쓸게요"
-          onSecondary={() => setSelectedEmptyDate(null)}
-          onClose={() => setSelectedEmptyDate(null)}
+          primaryText="닫기"
+          onPrimary={() => setSelectedDate(null)}
+          onClose={() => setSelectedDate(null)}
         />
       )}
 
@@ -539,6 +607,56 @@ export default function CalendarScreen({
           onClose={() => setFutureDate(null)}
         />
       )}
+    </div>
+  )
+}
+
+function DiaryTypeSelectContent({
+  date,
+  questionEntry,
+  freeEntry,
+  onOpenQuestion,
+  onOpenFree,
+  onWriteQuestion,
+  onWriteFree,
+}: {
+  date: string
+  questionEntry?: DiaryApiItem
+  freeEntry?: DiaryApiItem
+  onOpenQuestion: () => void
+  onOpenFree: () => void
+  onWriteQuestion: () => void
+  onWriteFree: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span>{date}의 일기를 선택해 주세요.</span>
+
+      <button
+        onClick={questionEntry ? onOpenQuestion : onWriteQuestion}
+        className="w-full py-3 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98]"
+        style={{
+          background: "#FFF3E8",
+          color: "#C9856A",
+          border: "1.5px solid rgba(201,133,106,0.22)",
+        }}
+        type="button"
+      >
+        💬 {questionEntry ? "질문형 일기 보기" : "질문형 일기 쓰기"}
+      </button>
+
+      <button
+        onClick={freeEntry ? onOpenFree : onWriteFree}
+        className="w-full py-3 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98]"
+        style={{
+          background: "#EEF3EC",
+          color: "#7D967A",
+          border: "1.5px solid rgba(125,150,122,0.22)",
+        }}
+        type="button"
+      >
+        ✍️ {freeEntry ? "자유형 일기 보기" : "자유형 일기 쓰기"}
+      </button>
     </div>
   )
 }
@@ -592,12 +710,12 @@ function CalendarModal({
             {title}
           </h3>
 
-          <p
+          <div
             className="text-sm leading-relaxed mb-5"
             style={{ color: "#8A7E76" }}
           >
             {description}
-          </p>
+          </div>
 
           <button
             onClick={onPrimary}

@@ -26,14 +26,38 @@ type BirthProfilePayload = {
   timezone?: string | null
 }
 
+export type DiaryType = "question" | "free"
+
 type DiaryPayload = {
   entry_date?: string
   content: string
   weather: string
   mood_tags: string[]
-
-  diary_type?: "question" | "free"
+  diary_type?: DiaryType
+  question_id?: string | null
   question_text?: string | null
+}
+
+export type QuestionHistoryItem = {
+  id: number
+  user_id: number
+  entry_date: string
+  content: string
+  weather?: string | null
+  mood_tags?: string[] | null
+  summary_tag?: string | null
+  diary_type?: DiaryType | null
+  question_id?: string | null
+  question_text?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type QuestionHistoryResponse = {
+  month_day?: string | null
+  question_id?: string | null
+  question_text?: string | null
+  items: QuestionHistoryItem[]
 }
 
 class ApiClient {
@@ -54,9 +78,7 @@ class ApiClient {
     try {
       const error = await response.json()
       errorMessage = error.detail || errorMessage
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     return errorMessage
   }
@@ -69,9 +91,7 @@ class ApiClient {
         const response = await fetch(`${this.baseURL}/api/auth/refresh`, {
           method: "POST",
           credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
         })
 
         if (!response.ok) {
@@ -112,9 +132,7 @@ class ApiClient {
     }
 
     const token = this.getToken()
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
+    if (token) headers["Authorization"] = `Bearer ${token}`
 
     let response = await fetch(url, {
       ...options,
@@ -140,11 +158,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorMessage = await this.parseError(response)
-
-      if (response.status === 401) {
-        clearAccessToken()
-      }
-
+      if (response.status === 401) clearAccessToken()
       throw new ApiError(errorMessage, response.status)
     }
 
@@ -188,10 +202,7 @@ class ApiClient {
   async login(email: string, password: string) {
     return this.post<{ access_token: string; token_type?: string }>(
       "/api/auth/login",
-      {
-        username: email,
-        password,
-      }
+      { username: email, password }
     )
   }
 
@@ -236,16 +247,26 @@ class ApiClient {
     return this.get("/api/dashboard")
   }
 
-  async getDiaries(month: string) {
-    return this.get(`/api/diary?month=${month}`)
+  async getDiaries(month: string, diaryType?: DiaryType) {
+    const params = new URLSearchParams()
+    params.set("month", month)
+    if (diaryType) params.set("diary_type", diaryType)
+
+    return this.get(`/api/diary?${params.toString()}`)
   }
 
-  async getDiaryByDate(date: string) {
-    return this.get(`/api/diary/date/${date}`)
+  async getDiaryByDate(date: string, diaryType: DiaryType = "free") {
+    const params = new URLSearchParams()
+    params.set("diary_type", diaryType)
+
+    return this.get(`/api/diary/date/${date}?${params.toString()}`)
   }
 
-  async getTodayDiary() {
-    return this.get("/api/diary/today")
+  async getTodayDiary(diaryType: DiaryType = "free") {
+    const params = new URLSearchParams()
+    params.set("diary_type", diaryType)
+
+    return this.get(`/api/diary/today?${params.toString()}`)
   }
 
   async getDiaryQuestion() {
@@ -257,6 +278,25 @@ class ApiClient {
       created_at?: string
       cached?: boolean
     }>("/api/diary/question")
+  }
+
+  async getQuestionHistory(paramsInput: {
+    question_id?: string | null
+    month_day?: string | null
+  }) {
+    const params = new URLSearchParams()
+
+    if (paramsInput.question_id) {
+      params.set("question_id", paramsInput.question_id)
+    }
+
+    if (paramsInput.month_day) {
+      params.set("month_day", paramsInput.month_day)
+    }
+
+    return this.get<QuestionHistoryResponse>(
+      `/api/diary/question-history?${params.toString()}`
+    )
   }
 
   async createDiary(data: DiaryPayload) {
@@ -271,8 +311,11 @@ class ApiClient {
     return this.put(`/api/diary/date/${date}`, data)
   }
 
-  async deleteDiary(date: string) {
-    return this.delete(`/api/diary/date/${date}`)
+  async deleteDiary(date: string, diaryType: DiaryType = "free") {
+    const params = new URLSearchParams()
+    params.set("diary_type", diaryType)
+
+    return this.delete(`/api/diary/date/${date}?${params.toString()}`)
   }
 
   async generateMissingDiarySummaryTags() {
@@ -282,6 +325,7 @@ class ApiClient {
       items: Array<{
         id: number
         entry_date: string
+        diary_type?: DiaryType
         summary_tag: string
       }>
       failed_count?: number

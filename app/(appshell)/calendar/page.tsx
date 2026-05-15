@@ -4,7 +4,7 @@
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import CalendarScreen from "@/components/calendar-screen"
-import { apiClient } from "@/lib/api"
+import { apiClient, type DiaryType } from "@/lib/api"
 
 export type DiaryItem = {
   id: number
@@ -14,14 +14,13 @@ export type DiaryItem = {
   weather?: string | null
   mood_tags?: string[] | null
   summary_tag?: string | null
+  diary_type?: DiaryType | null
+  question_text?: string | null
   created_at: string
   updated_at: string
 }
 
-function buildUrlWithParams(
-  pathname: string,
-  params?: Record<string, unknown>
-) {
+function buildUrlWithParams(pathname: string, params?: Record<string, unknown>) {
   if (!params || Object.keys(params).length === 0) {
     return pathname
   }
@@ -47,6 +46,10 @@ function buildUrlWithParams(
   }
 
   return `${pathname}?${queryString}`
+}
+
+function normalizeDiaryType(value: unknown): DiaryType {
+  return value === "question" ? "question" : "free"
 }
 
 export default function CalendarPage() {
@@ -77,7 +80,9 @@ export default function CalendarPage() {
 
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {
-      router.push(`/diary-detail/${params.date}`)
+      const diaryType = normalizeDiaryType(params.diary_type)
+
+      router.push(`/diary-detail/${params.date}?diary_type=${diaryType}`)
       return
     }
 
@@ -94,6 +99,7 @@ export default function CalendarPage() {
     if (screen === "letter-detail" && params?.letter) {
       const letterId =
         (params.letter as { id?: number | string })?.id ?? params.letter
+
       router.push(`/letter-detail/${letterId}`)
       return
     }

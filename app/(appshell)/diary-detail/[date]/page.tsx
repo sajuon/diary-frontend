@@ -1,12 +1,10 @@
 // /home/dori/diary-frontend/app/(appshell)/diary-detail/[date]/page.tsx
 "use client"
 
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import DiaryDetailScreen from "@/components/diary-detail-screen"
-import { apiClient } from "@/lib/api"
-
-type DiaryType = "question" | "free"
+import { apiClient, type DiaryType } from "@/lib/api"
 
 interface DiaryDetailResponse {
   id: number
@@ -16,13 +14,9 @@ interface DiaryDetailResponse {
   weather?: string | null
   mood_tags?: string[]
   summary_tag?: string | null
-
-  // 질문형 / 자유형 구분
   diary_type?: DiaryType | null
-
-  // 질문형 일기일 때의 질문 문구
+  question_id?: string | null
   question_text?: string | null
-
   created_at: string
   updated_at: string
 }
@@ -41,10 +35,17 @@ interface LetterDetailResponse {
   updated_at: string
 }
 
+function normalizeDiaryType(value: string | null): DiaryType {
+  return value === "question" ? "question" : "free"
+}
+
 export default function DiaryDetailPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
+
   const date = String(params.date)
+  const diaryType = normalizeDiaryType(searchParams.get("diary_type"))
 
   const [diary, setDiary] = useState<DiaryDetailResponse | null>(null)
   const [letter, setLetter] = useState<LetterDetailResponse | null>(null)
@@ -53,12 +54,22 @@ export default function DiaryDetailPage() {
 
   const loadDiaryAndLetter = async () => {
     try {
-      const diaryData = await apiClient.getDiaryByDate(date)
+      setLoading(true)
+
+      const diaryData = await apiClient.getDiaryByDate(date, diaryType)
       const typedDiary = diaryData as DiaryDetailResponse
+
       setDiary(typedDiary)
 
+      if (diaryType === "question") {
+        setLetter(null)
+        return
+      }
+
       const month = date.slice(0, 7)
-      const lettersData = (await apiClient.getLetters(month)) as LetterDetailResponse[]
+      const lettersData = (await apiClient.getLetters(
+        month
+      )) as LetterDetailResponse[]
 
       const matchedLetter =
         lettersData.find((item) => item.diary_entry_id === typedDiary.id) ??
@@ -86,11 +97,15 @@ export default function DiaryDetailPage() {
     if (date) {
       loadDiaryAndLetter()
     }
-  }, [date, router])
+  }, [date, diaryType, router])
 
   const navigate = (screen: string, params?: Record<string, unknown>) => {
     if (screen === "diary-detail" && params?.date) {
-      router.push(`/diary-detail/${params.date}`)
+      const nextDiaryType = normalizeDiaryType(
+        typeof params.diary_type === "string" ? params.diary_type : diaryType
+      )
+
+      router.push(`/diary-detail/${params.date}?diary_type=${nextDiaryType}`)
       return
     }
 
@@ -105,6 +120,11 @@ export default function DiaryDetailPage() {
   }
 
   const handleGenerateLetterWithPearl = async () => {
+    if (diaryType !== "free") {
+      alert("질문형 일기에는 해도리 답장을 받을 수 없어요.")
+      return
+    }
+
     try {
       setLetterGenerating(true)
 
@@ -128,21 +148,26 @@ export default function DiaryDetailPage() {
     weather?: string
     mood_tags: string[]
     diary_type?: DiaryType | null
+    question_id?: string | null
     question_text?: string | null
   }) => {
     try {
+      const resolvedDiaryType = data.diary_type || diary?.diary_type || diaryType
+
       const updated = await apiClient.updateDiary(date, {
         content: data.content,
         weather: data.weather || diary?.weather || "sunny",
         mood_tags: data.mood_tags,
-        diary_type: data.diary_type || diary?.diary_type || "free",
+        diary_type: resolvedDiaryType,
+        question_id:
+          resolvedDiaryType === "question"
+            ? data.question_id ?? diary?.question_id ?? null
+            : null,
         question_text:
-          data.diary_type === "question"
+          resolvedDiaryType === "question"
             ? data.question_text ?? diary?.question_text ?? null
-            : diary?.diary_type === "question"
-              ? diary?.question_text ?? null
-              : null,
-      } as any)
+            : null,
+      })
 
       const typedUpdated = updated as DiaryDetailResponse
       setDiary(typedUpdated)
@@ -156,8 +181,8 @@ export default function DiaryDetailPage() {
 
   const handleDeleteDiary = async () => {
     try {
-      await apiClient.deleteDiary(date)
-      router.push("/diary")
+      await apiClient.deleteDiary(date, diaryType)
+      router.push("/calendar")
     } catch (error) {
       console.error("Failed to delete diary:", error)
       alert("일기 삭제에 실패했습니다.")
@@ -191,7 +216,9 @@ export default function DiaryDetailPage() {
       letter={letter}
       onUpdateDiary={handleUpdateDiary}
       onDeleteDiary={handleDeleteDiary}
-      onGenerateLetterWithPearl={handleGenerateLetterWithPearl}
+      onGenerateLetterWithPearl={
+        diaryType === "free" ? handleGenerateLetterWithPearl : undefined
+      }
       letterGenerating={letterGenerating}
     />
   )

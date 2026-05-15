@@ -29,6 +29,7 @@ type DiarySaveResponse = {
   mood_tags?: string[] | null
   summary_tag?: string | null
   diary_type?: DiaryType | null
+  question_id?: string | null
   question_text?: string | null
   created_at?: string
   updated_at?: string
@@ -75,6 +76,11 @@ function dateStringToLocalDate(dateString: string) {
   return new Date(year, month - 1, day)
 }
 
+function getQuestionIdFromDate(dateString: string) {
+  const [, month, day] = dateString.split("-")
+  return `${month}-${day}`
+}
+
 function getQuestionUserKey() {
   if (typeof window === "undefined") return "guest"
 
@@ -99,18 +105,27 @@ export default function DiaryScreen({
 
   const isToday = selectedDate === getTodayDateString()
 
+  const [activeTab, setActiveTab] = useState<DiaryType>("question")
   const [isEdit, setIsEdit] = useState(false)
   const [canEdit, setCanEdit] = useState(true)
 
-  const [activeTab, setActiveTab] = useState<DiaryType>("question")
   const [text, setText] = useState("")
   const [selectedWeather, setSelectedWeather] = useState("sunny")
   const [selectedMood, setSelectedMood] = useState("calm")
-
   const [question, setQuestion] = useState("오늘의 질문을 준비하고 있어요...")
 
   const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const typeLabel = activeTab === "question" ? "질문형" : "자유형"
+
+  const resetForm = () => {
+    setIsEdit(false)
+    setText("")
+    setSelectedWeather("sunny")
+    setSelectedMood("calm")
+  }
 
   useEffect(() => {
     const now = new Date()
@@ -118,30 +133,27 @@ export default function DiaryScreen({
   }, [isToday])
 
   useEffect(() => {
-    async function fetchDiary() {
+    async function fetchDiaryByType() {
       try {
+        setFetching(true)
         setError(null)
 
-        if (!isToday) {
-          setIsEdit(false)
-          setText("")
-          setSelectedWeather("sunny")
-          setSelectedMood("calm")
-          setActiveTab("question")
-          return
-        }
+        let data: DiarySaveResponse
 
-        const data = (await apiClient.getTodayDiary()) as DiarySaveResponse
+        if (isToday) {
+          data = (await apiClient.getTodayDiary(activeTab)) as DiarySaveResponse
+        } else {
+          data = (await apiClient.getDiaryByDate(
+            selectedDate,
+            activeTab
+          )) as DiarySaveResponse
+        }
 
         setText(data.content || "")
         setSelectedWeather(data.weather || "sunny")
         setSelectedMood(data.mood_tags?.[0] || "calm")
 
-        if (data.diary_type === "free" || data.diary_type === "question") {
-          setActiveTab(data.diary_type)
-        }
-
-        if (data.question_text) {
+        if (activeTab === "question" && data.question_text) {
           setQuestion(data.question_text)
         }
 
@@ -150,26 +162,25 @@ export default function DiaryScreen({
         const message = e?.message || ""
 
         if (
-          message.includes("오늘 일기가 없습니다") ||
+          message.includes("일기가 없습니다") ||
           message.includes("HTTP 404")
         ) {
-          setIsEdit(false)
-          setText("")
-          setSelectedWeather("sunny")
-          setSelectedMood("calm")
-          setActiveTab("question")
+          resetForm()
           return
         }
 
-        setError(message || "일기를 불러오지 못했어요.")
+        setError(message || `${typeLabel} 일기를 불러오지 못했어요.`)
+      } finally {
+        setFetching(false)
       }
     }
 
-    fetchDiary()
-  }, [isToday, selectedDate])
+    fetchDiaryByType()
+  }, [activeTab, selectedDate, isToday, typeLabel])
 
   useEffect(() => {
     if (activeTab !== "question") return
+    if (isEdit && question.trim()) return
 
     if (
       initialQuestion &&
@@ -185,7 +196,14 @@ export default function DiaryScreen({
     })
 
     setQuestion(dailyQuestion)
-  }, [activeTab, initialQuestion, initialQuestionDate, selectedDate])
+  }, [
+    activeTab,
+    initialQuestion,
+    initialQuestionDate,
+    selectedDate,
+    isEdit,
+    question,
+  ])
 
   async function handleSaveDiary() {
     setLoading(true)
@@ -198,19 +216,25 @@ export default function DiaryScreen({
         weather: selectedWeather,
         mood_tags: [selectedMood],
         diary_type: activeTab,
+        question_id:
+          activeTab === "question" ? getQuestionIdFromDate(selectedDate) : null,
         question_text: activeTab === "question" ? question : null,
       }
 
       let saved: DiarySaveResponse
 
       if (isEdit && isToday) {
-        saved = (await apiClient.updateTodayDiary(payload as any)) as DiarySaveResponse
+        saved = (await apiClient.updateTodayDiary(payload)) as DiarySaveResponse
+      } else if (isEdit) {
+        saved = (await apiClient.updateDiary(
+          selectedDate,
+          payload
+        )) as DiarySaveResponse
       } else {
-        saved = (await apiClient.createDiary(payload as any)) as DiarySaveResponse
+        saved = (await apiClient.createDiary(payload)) as DiarySaveResponse
       }
 
       const entryDate: string = saved?.entry_date || selectedDate
-
       const monthKey = getDiaryMonthKeyFromDate(entryDate)
       invalidateDiaryMonth(monthKey)
 
@@ -278,6 +302,34 @@ export default function DiaryScreen({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 space-y-4 pb-28">
+        {fetching && (
+          <div
+            className="rounded-2xl px-4 py-3 text-sm font-bold text-center"
+            style={{
+              background: "#FFFCF8",
+              color: "#9A8F87",
+              border: "1.5px solid #E5DDD5",
+            }}
+          >
+            {typeLabel} 일기를 확인하는 중...
+          </div>
+        )}
+
+        <div
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold"
+          style={{
+            background: activeTab === "question" ? "#FFF3E8" : "#EEF3EC",
+            color: activeTab === "question" ? "#C9856A" : "#7D967A",
+            border:
+              activeTab === "question"
+                ? "1.5px solid rgba(201,133,106,0.22)"
+                : "1.5px solid rgba(125,150,122,0.22)",
+          }}
+        >
+          <span>{activeTab === "question" ? "💬" : "✍️"}</span>
+          {isEdit ? `작성된 ${typeLabel} 일기` : `새 ${typeLabel} 일기`}
+        </div>
+
         {activeTab === "question" && (
           <div className="space-y-2">
             <div className="flex items-end gap-3">
@@ -336,6 +388,27 @@ export default function DiaryScreen({
           </div>
         )}
 
+        {activeTab === "free" && (
+          <div
+            className="rounded-3xl px-5 py-4"
+            style={{
+              background: "#FFF9F0",
+              border: "1.5px solid rgba(242,196,168,0.55)",
+              boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
+            }}
+          >
+            <p
+              className="text-sm font-bold leading-relaxed"
+              style={{ color: "#3D3530" }}
+            >
+              자유형 일기는 해도리 피드백과 답장을 받을 수 있어요.
+            </p>
+            <p className="text-xs mt-1.5" style={{ color: "#9A8F87" }}>
+              질문형 일기는 기록용으로만 저장돼요.
+            </p>
+          </div>
+        )}
+
         <div
           className="rounded-3xl overflow-hidden"
           style={{
@@ -349,7 +422,7 @@ export default function DiaryScreen({
             onChange={(e) => setText(e.target.value)}
             placeholder={
               activeTab === "question"
-                ? "여기에 솔직하게 적어봐요..."
+                ? "질문에 대한 답을 솔직하게 적어봐요..."
                 : "오늘 하루를 자유롭게 기록해요..."
             }
             className="w-full h-44 px-5 pt-4 text-sm leading-relaxed resize-none outline-none"
@@ -453,13 +526,17 @@ export default function DiaryScreen({
             background: "#C9856A",
             color: "#FFFCF8",
             boxShadow: "0 4px 16px rgba(201,133,106,0.35)",
-            opacity: loading || !text.trim() || !canEdit ? 0.6 : 1,
+            opacity: loading || fetching || !text.trim() || !canEdit ? 0.6 : 1,
           }}
           onClick={handleSaveDiary}
-          disabled={loading || !text.trim() || !canEdit}
+          disabled={loading || fetching || !text.trim() || !canEdit}
           type="button"
         >
-          {loading ? "저장 중..." : isEdit ? "일기 수정하기" : "일기 저장하기"}
+          {loading
+            ? "저장 중..."
+            : isEdit
+              ? `${typeLabel} 일기 수정하기`
+              : `${typeLabel} 일기 저장하기`}
         </button>
       </div>
     </div>

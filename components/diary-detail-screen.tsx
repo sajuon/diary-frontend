@@ -14,6 +14,7 @@ interface DiaryEntryResponse {
   mood_tags?: string[]
   summary_tag?: string | null
   diary_type?: DiaryType | null
+  question_id?: string | null
   question_text?: string | null
   created_at: string
   updated_at: string
@@ -43,6 +44,7 @@ interface DiaryDetailScreenProps {
     weather?: string
     mood_tags: string[]
     diary_type?: DiaryType | null
+    question_id?: string | null
     question_text?: string | null
   }) => Promise<void>
   onDeleteDiary: () => Promise<void>
@@ -83,14 +85,23 @@ export default function DiaryDetailScreen({
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
 
   const moodId = diary.mood_tags?.[0] || "calm"
-  const currentMood = useMemo(() => {
-    return moodMeta[moodId] || defaultMoodMeta
-  }, [moodId])
+  const currentMood = useMemo(() => moodMeta[moodId] || defaultMoodMeta, [moodId])
 
   const isQuestionDiary =
     diary.diary_type === "question" || Boolean(diary.question_text)
 
   const diaryTypeLabel = isQuestionDiary ? "질문형 일기" : "자유 일기"
+
+  const handleOpenQuestionHistory = () => {
+    const params = new URLSearchParams({
+      date: diary.entry_date,
+      diary_id: String(diary.id),
+      question_id: diary.question_id || "",
+      question_text: diary.question_text || "",
+    })
+
+    window.location.href = `/question-history?${params.toString()}`
+  }
 
   return (
     <div
@@ -108,19 +119,7 @@ export default function DiaryDetailScreen({
           aria-label="달력으로 돌아가기"
           type="button"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#3D3530"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          ←
         </button>
 
         <div className="text-center">
@@ -188,6 +187,20 @@ export default function DiaryDetailScreen({
                 {diary.question_text || "저장된 질문 정보가 없어요."}
               </p>
             </div>
+
+            <button
+              onClick={handleOpenQuestionHistory}
+              className="w-full mt-3 py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98]"
+              style={{
+                background: "#FFFCF8",
+                color: "#C9856A",
+                border: "1.5px solid rgba(201,133,106,0.22)",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              }}
+              type="button"
+            >
+              같은 질문의 지난 답변 모아보기
+            </button>
           </div>
         )}
 
@@ -213,137 +226,146 @@ export default function DiaryDetailScreen({
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <span className="text-base" aria-hidden="true">
-              🦦
-            </span>
-            <p className="text-xs font-bold" style={{ color: "#9A8F87" }}>
-              해도리의 피드백
-            </p>
-          </div>
-
-          <div
-            className="px-5 py-5 rounded-3xl"
-            style={{
-              background: "#FFF9F0",
-              border: "1.5px solid rgba(242,196,168,0.55)",
-              boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
-            }}
-          >
-            {letter ? (
-              <p
-                className="text-sm whitespace-pre-line"
-                style={{ color: "#3D3530", lineHeight: "1.9" }}
-              >
-                {letter.content}
-              </p>
-            ) : (
-              <div className="text-center">
-                <p
-                  className="text-sm leading-relaxed mb-4"
-                  style={{ color: "#6B625C" }}
-                >
-                  아직 해도리 답장이 없어요.
-                  <br />
-                  진주 1개를 사용하면 이 일기에 대한 답장을 받을 수 있어요.
+        {!isQuestionDiary && (
+          <>
+            <div>
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <span className="text-base" aria-hidden="true">
+                  🦦
+                </span>
+                <p className="text-xs font-bold" style={{ color: "#9A8F87" }}>
+                  해도리의 피드백
                 </p>
+              </div>
 
-                {onGenerateLetterWithPearl && (
-                  <button
-                    onClick={onGenerateLetterWithPearl}
-                    disabled={letterGenerating}
-                    className="w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{
-                      background: "#C9856A",
-                      color: "#FFFCF8",
-                      boxShadow: "0 4px 16px rgba(201,133,106,0.25)",
-                    }}
-                    type="button"
+              <div
+                className="px-5 py-5 rounded-3xl"
+                style={{
+                  background: "#FFF9F0",
+                  border: "1.5px solid rgba(242,196,168,0.55)",
+                  boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
+                }}
+              >
+                {letter ? (
+                  <p
+                    className="text-sm whitespace-pre-line"
+                    style={{ color: "#3D3530", lineHeight: "1.9" }}
                   >
-                    {letterGenerating
-                      ? "해도리가 답장 쓰는 중..."
-                      : "진주 1개로 해도리 답장 받기"}
-                  </button>
+                    {letter.content}
+                  </p>
+                ) : (
+                  <div className="text-center">
+                    <p
+                      className="text-sm leading-relaxed mb-4"
+                      style={{ color: "#6B625C" }}
+                    >
+                      아직 해도리 답장이 없어요.
+                      <br />
+                      진주 1개를 사용하면 이 일기에 대한 답장을 받을 수 있어요.
+                    </p>
+
+                    {onGenerateLetterWithPearl && (
+                      <button
+                        onClick={onGenerateLetterWithPearl}
+                        disabled={letterGenerating}
+                        className="w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          background: "#C9856A",
+                          color: "#FFFCF8",
+                          boxShadow: "0 4px 16px rgba(201,133,106,0.25)",
+                        }}
+                        type="button"
+                      >
+                        {letterGenerating
+                          ? "해도리가 답장 쓰는 중..."
+                          : "진주 1개로 해도리 답장 받기"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          className="px-5 py-5 rounded-3xl"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          }}
-        >
-          <button
-            onClick={() => setStarred((s) => !s)}
-            className="flex items-center gap-3 w-full mb-4 transition-all active:scale-[0.97]"
-            aria-label={starred ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
-            type="button"
-          >
-            <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors"
-              style={{ background: starred ? "#FFF3D0" : "#EDE8E0" }}
-            >
-              ⭐
             </div>
 
-            <span
-              className="text-sm font-semibold"
-              style={{ color: starred ? "#C9A060" : "#6B6059" }}
-            >
-              {starred ? "즐겨찾기에 추가됨" : "즐겨찾기"}
-            </span>
-          </button>
-
-          <div style={{ height: "1px", background: "#F0EAE4" }} className="mb-4" />
-
-          <p
-            className="text-xs font-semibold mb-3 text-center"
-            style={{ color: "#9A8F87" }}
-          >
-            해도리 피드백이 도움이 되었나요?
-          </p>
-
-          <div className="flex gap-3 justify-center mb-4">
-            <button
-              onClick={() => setFeedback(feedback === "like" ? null : "like")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
+            <div
+              className="px-5 py-5 rounded-3xl"
               style={{
-                background: feedback === "like" ? "#D4EACF" : "#EDE8E0",
+                background: "#FFFCF8",
+                border: "1.5px solid #E5DDD5",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
               }}
-              aria-pressed={feedback === "like"}
-              type="button"
             >
-              <span className="text-sm font-bold">좋아요</span>
-            </button>
+              <button
+                onClick={() => setStarred((s) => !s)}
+                className="flex items-center gap-3 w-full mb-4 transition-all active:scale-[0.97]"
+                aria-label={starred ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
+                type="button"
+              >
+                <div
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors"
+                  style={{ background: starred ? "#FFF3D0" : "#EDE8E0" }}
+                >
+                  ⭐
+                </div>
 
-            <button
-              onClick={() => setFeedback(feedback === "dislike" ? null : "dislike")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
-              style={{
-                background: feedback === "dislike" ? "#FDDDD8" : "#EDE8E0",
-              }}
-              aria-pressed={feedback === "dislike"}
-              type="button"
-            >
-              <span className="text-sm font-bold">아쉬워요</span>
-            </button>
-          </div>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: starred ? "#C9A060" : "#6B6059" }}
+                >
+                  {starred ? "즐겨찾기에 추가됨" : "즐겨찾기"}
+                </span>
+              </button>
 
-          <p
-            className="text-center text-xs leading-relaxed"
-            style={{ color: "#C4B8B0" }}
-          >
-            여러분의 선택은 더 좋은 해도리를
-            <br />
-            만드는 데 사용됩니다.
-          </p>
-        </div>
+              <div
+                style={{ height: "1px", background: "#F0EAE4" }}
+                className="mb-4"
+              />
+
+              <p
+                className="text-xs font-semibold mb-3 text-center"
+                style={{ color: "#9A8F87" }}
+              >
+                해도리 피드백이 도움이 되었나요?
+              </p>
+
+              <div className="flex gap-3 justify-center mb-4">
+                <button
+                  onClick={() => setFeedback(feedback === "like" ? null : "like")}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
+                  style={{
+                    background: feedback === "like" ? "#D4EACF" : "#EDE8E0",
+                  }}
+                  aria-pressed={feedback === "like"}
+                  type="button"
+                >
+                  <span className="text-sm font-bold">좋아요</span>
+                </button>
+
+                <button
+                  onClick={() =>
+                    setFeedback(feedback === "dislike" ? null : "dislike")
+                  }
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
+                  style={{
+                    background: feedback === "dislike" ? "#FDDDD8" : "#EDE8E0",
+                  }}
+                  aria-pressed={feedback === "dislike"}
+                  type="button"
+                >
+                  <span className="text-sm font-bold">아쉬워요</span>
+                </button>
+              </div>
+
+              <p
+                className="text-center text-xs leading-relaxed"
+                style={{ color: "#C4B8B0" }}
+              >
+                여러분의 선택은 더 좋은 해도리를
+                <br />
+                만드는 데 사용됩니다.
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       <style>{`
