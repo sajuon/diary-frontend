@@ -1,3 +1,4 @@
+//변환 끝
 // /home/dori/diary-frontend/components/question-history-screen.tsx
 "use client"
 

@@ -143,7 +143,7 @@ export default function DiaryDetailPage() {
     router.push(`/${screen}`)
   }
 
-  const handleGenerateLetterWithPearl = async () => {
+  const handleGenerateLetterForDiary = async () => {
     if (diaryType !== "free") {
       alert("질문형 일기에는 해도리 답장을 받을 수 없어요.")
       return
@@ -152,7 +152,7 @@ export default function DiaryDetailPage() {
     try {
       setLetterGenerating(true)
 
-      const generatedLetter = (await apiClient.generateLetterWithPearl(
+      const generatedLetter = (await apiClient.generateLetterForDiary(
         date
       )) as LetterDetailResponse
 
@@ -160,7 +160,7 @@ export default function DiaryDetailPage() {
 
       router.push(`/letter-detail/${generatedLetter.id}`)
     } catch (error: any) {
-      console.error("Failed to generate letter with pearl:", error)
+      console.error("Failed to generate letter:", error)
       alert(error?.message || "해도리 답장 생성에 실패했습니다.")
     } finally {
       setLetterGenerating(false)
@@ -241,7 +241,7 @@ export default function DiaryDetailPage() {
       onUpdateDiary={handleUpdateDiary}
       onDeleteDiary={handleDeleteDiary}
       onGenerateLetterWithPearl={
-        diaryType === "free" ? handleGenerateLetterWithPearl : undefined
+        diaryType === "free" ? handleGenerateLetterForDiary : undefined
       }
       letterGenerating={letterGenerating}
     />

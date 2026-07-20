@@ -373,15 +373,28 @@ class ApiClient {
     return this.post(`/api/letters/generate${query}`)
   }
 
-  async generateLetterWithPearl(targetDate: string) {
+  async generateLetterForDiary(targetDate: string) {
     const params = new URLSearchParams()
     params.set("target_date", targetDate)
 
     return this.post(`/api/letters/generate-with-pearl?${params.toString()}`)
   }
 
+  async generateLetterWithPearl(targetDate: string) {
+    return this.generateLetterForDiary(targetDate)
+  }
+
   async generateTodayLetter() {
-    return this.generateLetter()
+    return this.generateLetterForDiary(this.getTodayDateString())
+  }
+
+  private getTodayDateString() {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, "0")
+    const day = String(now.getDate()).padStart(2, "0")
+
+    return `${year}-${month}-${day}`
   }
 
   async getTodayFortune() {

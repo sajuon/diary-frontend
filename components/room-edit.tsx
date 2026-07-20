@@ -1,3 +1,4 @@
+//변환 끝
 // diary-frontend/components/room-edit.tsx
 "use client"
 

@@ -1,4 +1,7 @@
-// /home/dori/diary-frontend/components/home-screen.tsx
+// 기존 파일 경로: /home/dori/diary-frontend/components/home-screen.tsx
+// 수정 파일 경로: /home/dori/diary-frontend/components/home-screen.tsx
+// 역할: 홈 화면 UI. 오늘의 운세/연애운/재물운/학업운 카드별로 다른 type을 전달해 상세 사주 해석을 불러온다.
+
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
@@ -27,6 +30,8 @@ interface HomeScreenProps {
   } | null
 }
 
+type FortuneType = "daily" | "love" | "money" | "study"
+
 type NotificationItem = {
   id: string
   text: string
@@ -53,10 +58,12 @@ type ManseData = {
   analysis_date?: string
   model?: string | null
   chart_provided?: boolean
+  fortune_type?: FortuneType
 }
 
 function formatLetterDate(dateString?: string) {
   if (!dateString) return ""
+
   const date = new Date(dateString)
   return `${date.getMonth() + 1}월 ${date.getDate()}일`
 }
@@ -66,6 +73,7 @@ function getTodayKey() {
   const y = now.getFullYear()
   const m = String(now.getMonth() + 1).padStart(2, "0")
   const d = String(now.getDate()).padStart(2, "0")
+
   return `${y}-${m}-${d}`
 }
 
@@ -110,10 +118,8 @@ export default function HomeScreen({
 
   const API_BASE_URL = useMemo(() => process.env.NEXT_PUBLIC_API_URL || "", [])
 
-  const token = useMemo(() => {
-    if (typeof window === "undefined") return null
-    return localStorage.getItem("access_token")
-  }, [])
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("access_token") : null
 
   const authHeaders = useMemo((): Record<string, string> => {
     const h: Record<string, string> = {}
@@ -128,9 +134,17 @@ export default function HomeScreen({
   const [localReadMap, setLocalReadMap] = useState<Record<string, boolean>>({})
 
   const [showManse, setShowManse] = useState(false)
-  const [manseData, setManseData] = useState<ManseData | null>(null)
+  const [manseDataMap, setManseDataMap] = useState<
+    Partial<Record<FortuneType, ManseData>>
+  >({})
+  const [selectedFortuneType, setSelectedFortuneType] =
+    useState<FortuneType>("daily")
+  const [selectedFortuneTitle, setSelectedFortuneTitle] =
+    useState("오늘의 운세")
   const [manseLoading, setManseLoading] = useState(false)
   const [manseError, setManseError] = useState<string | null>(null)
+
+  const manseData = manseDataMap[selectedFortuneType] ?? null
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -196,30 +210,39 @@ export default function HomeScreen({
     },
   ]
 
-  const fortuneCards = [
+  const fortuneCards: Array<{
+    type: FortuneType
+    title: string
+    icon: string
+    content: string
+  }> = [
     {
+      type: "daily",
       title: "오늘의 운세",
       icon: "🌤",
       content: flowSummary,
     },
     {
+      type: "love",
       title: "오늘의 연애운",
       icon: "💗",
       content:
-        todayFortune?.love || "오늘의 흐름을 열면 연애운을 확인할 수 있어요.",
+        todayFortune?.love || "관계와 감정의 흐름을 자세히 확인해보세요.",
     },
     {
+      type: "money",
       title: "오늘의 재물운",
       icon: "💰",
       content:
         todayFortune?.good_thing ||
-        "오늘의 흐름을 열면 재물운 힌트를 확인할 수 있어요.",
+        "소비와 금전 흐름에 대한 힌트를 확인해보세요.",
     },
     {
+      type: "study",
       title: "오늘의 학업운",
       icon: "📚",
       content:
-        todayFortune?.study || "오늘의 흐름을 열면 학업운을 확인할 수 있어요.",
+        todayFortune?.study || "집중력과 공부 흐름을 자세히 확인해보세요.",
     },
   ]
 
@@ -227,16 +250,19 @@ export default function HomeScreen({
     ? "오늘의 흐름과 별개로 생년월일시 기반 사주 해석을 불러와요."
     : "생년월일을 입력하면 더 자세한 사주 해석을 볼 수 있어요."
 
-  async function fetchManse() {
+  async function fetchManse(fortuneType: FortuneType) {
     setManseLoading(true)
     setManseError(null)
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/saju/manse`, {
-        headers: authHeaders,
-        credentials: "include",
-        cache: "no-store",
-      })
+      const res = await fetch(
+        `${API_BASE_URL}/api/saju/manse?type=${fortuneType}`,
+        {
+          headers: authHeaders,
+          credentials: "include",
+          cache: "no-store",
+        }
+      )
 
       if (!res.ok) {
         const message = await res.text()
@@ -244,7 +270,11 @@ export default function HomeScreen({
       }
 
       const data = (await res.json()) as ManseData
-      setManseData(data)
+
+      setManseDataMap((prev) => ({
+        ...prev,
+        [fortuneType]: data,
+      }))
     } catch (err: any) {
       setManseError(err?.message || "사주 해석을 불러오지 못했습니다.")
     } finally {
@@ -252,13 +282,19 @@ export default function HomeScreen({
     }
   }
 
-  async function handleOpenManse() {
+  async function handleOpenManse(
+    fortuneType: FortuneType = "daily",
+    title = "오늘의 운세"
+  ) {
     if (manseLoading) return
 
+    setSelectedFortuneType(fortuneType)
+    setSelectedFortuneTitle(title)
     setShowManse(true)
+    setManseError(null)
 
-    if (!manseData || manseError) {
-      await fetchManse()
+    if (!manseDataMap[fortuneType]) {
+      await fetchManse(fortuneType)
     }
   }
 
@@ -524,7 +560,7 @@ export default function HomeScreen({
               </div>
 
               <button
-                onClick={() => void handleOpenManse()}
+                onClick={() => void handleOpenManse("daily", "오늘의 운세")}
                 disabled={manseLoading}
                 className="px-4 py-2 rounded-2xl text-sm font-bold whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed"
                 style={{
@@ -533,7 +569,9 @@ export default function HomeScreen({
                   boxShadow: "0 8px 18px rgba(201,133,106,0.18)",
                 }}
               >
-                {manseLoading ? "불러오는 중..." : "사주 보기"}
+                {manseLoading && selectedFortuneType === "daily"
+                  ? "불러오는 중..."
+                  : "사주 보기"}
               </button>
             </div>
           </div>
@@ -551,7 +589,7 @@ export default function HomeScreen({
             <div className="grid grid-cols-2 gap-3">
               {fortuneCards.map((card) => (
                 <div
-                  key={card.title}
+                  key={card.type}
                   className="aspect-square rounded-[26px] p-4 flex flex-col"
                   style={{
                     background: "#FFFCF8",
@@ -578,15 +616,17 @@ export default function HomeScreen({
                   </p>
 
                   <button
-                    onClick={handleFlowButtonClick}
-                    disabled={isTodayFortuneLoading}
+                    onClick={() => void handleOpenManse(card.type, card.title)}
+                    disabled={manseLoading}
                     className="mt-3 w-full py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-70"
                     style={{
                       background: "#F7EEE7",
                       color: "#C9856A",
                     }}
                   >
-                    {hasTodayFortune ? "자세히 보기" : "운세 열기"}
+                    {manseLoading && selectedFortuneType === card.type
+                      ? "불러오는 중..."
+                      : "자세히 보기"}
                   </button>
                 </div>
               ))}
@@ -659,11 +699,6 @@ export default function HomeScreen({
             <button
               key={item.id}
               onClick={() => {
-                console.log("[HOME NAV TRACE]", {
-                  target: item.id,
-                  diaryParams,
-                })
-
                 if (item.id === "diary") {
                   onNavigate("diary", diaryParams)
                   return
@@ -689,7 +724,8 @@ export default function HomeScreen({
                 {item.label}
               </span>
             </button>
-          ))}        </div>
+          ))}
+        </div>
       </div>
 
       {showFlowModal && todayFortune && (
@@ -836,7 +872,7 @@ export default function HomeScreen({
                   className="text-base font-extrabold mt-0.5"
                   style={{ color: "#3D3530" }}
                 >
-                  오늘의 흐름을 반영한 해석
+                  {selectedFortuneTitle}
                 </h3>
               </div>
 
@@ -861,7 +897,7 @@ export default function HomeScreen({
                     className="text-sm font-semibold mt-4"
                     style={{ color: "#8C7A70" }}
                   >
-                    오늘의 사주 해석을 불러오는 중이에요.
+                    {selectedFortuneTitle}을 불러오는 중이에요.
                   </p>
                 </div>
               )}

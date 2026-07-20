@@ -1,3 +1,5 @@
+//변환 끝
+// /home/dori/diary-frontend/components/room-item-data.tsx
 export type InventoryCategory =
   | "all"
   | "wallpaper"
