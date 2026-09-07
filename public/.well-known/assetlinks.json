@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.haedori",
+    "sha256_cert_fingerprints": [
+      "2F:AD:7A:E3:00:37:5C:58:C4:F8:7E:F2:76:39:47:D6:BA:35:3E:6B:BC:AE:86:26:88:15:C4:8C:7A:DC:9D:BC"
+    ]
+  }
+}]

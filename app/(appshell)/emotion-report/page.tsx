@@ -1,59 +1,157 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+
+import {
+  apiClient,
+  type MonthlyReportResponse,
+  type MonthlySummaryResponse,
+  type WeeklyReportResponse,
+} from "@/lib/api"
 
 type ReportTab = "emotion" | "weekly" | "monthly"
 
-type EmotionDay = {
-  day: number
-  mood: string
-  label: string
-  value: number
+const WEEKDAY_HEADERS = ["일", "월", "화", "수", "목", "금", "토"]
+
+const EMPTY_CELL = "#EDE8E0"
+
+function getKstToday() {
+  const now = new Date()
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  return {
+    year: kst.getUTCFullYear(),
+    month: kst.getUTCMonth() + 1,
+  }
 }
 
-const moodColors: Record<string, string> = {
-  기쁨: "#F4C97A",
-  평온: "#A8BBA5",
-  슬픔: "#A8C4D4",
-  피곤: "#C4B8C4",
-  불안: "#E7B7A0",
-  화남: "#F2A8A8",
+function formatRange(start: string, end: string) {
+  const s = start.split("-")
+  const e = end.split("-")
+  return `${Number(s[1])}.${Number(s[2])} ~ ${Number(e[1])}.${Number(e[2])}`
 }
-
-const sampleEmotionDays: EmotionDay[] = [
-  { day: 1, mood: "평온", label: "차분", value: 52 },
-  { day: 2, mood: "기쁨", label: "좋음", value: 76 },
-  { day: 3, mood: "피곤", label: "지침", value: 38 },
-  { day: 4, mood: "불안", label: "걱정", value: 45 },
-  { day: 5, mood: "평온", label: "안정", value: 58 },
-  { day: 6, mood: "기쁨", label: "설렘", value: 82 },
-  { day: 7, mood: "슬픔", label: "우울", value: 30 },
-  { day: 8, mood: "평온", label: "괜찮음", value: 55 },
-  { day: 9, mood: "피곤", label: "무기력", value: 34 },
-  { day: 10, mood: "기쁨", label: "만족", value: 74 },
-  { day: 11, mood: "불안", label: "복잡", value: 42 },
-  { day: 12, mood: "평온", label: "차분", value: 60 },
-  { day: 13, mood: "화남", label: "예민", value: 28 },
-  { day: 14, mood: "기쁨", label: "즐거움", value: 80 },
-  { day: 15, mood: "평온", label: "안정", value: 63 },
-]
 
 export default function EmotionReportPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<ReportTab>("emotion")
 
-  const moodSummary = useMemo(() => {
-    const counts: Record<string, number> = {}
+  const today = getKstToday()
+  const [year, setYear] = useState(today.year)
+  const [month, setMonth] = useState(today.month)
 
-    sampleEmotionDays.forEach((item) => {
-      counts[item.mood] = (counts[item.mood] || 0) + 1
-    })
+  const [monthly, setMonthly] = useState<MonthlyReportResponse | null>(null)
+  const [monthlyLoading, setMonthlyLoading] = useState(true)
+  const [monthlyError, setMonthlyError] = useState(false)
 
-    return Object.entries(counts)
-      .map(([mood, count]) => ({ mood, count }))
-      .sort((a, b) => b.count - a.count)
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [weekly, setWeekly] = useState<WeeklyReportResponse | null>(null)
+  const [weeklyLoading, setWeeklyLoading] = useState(false)
+  const [weeklyError, setWeeklyError] = useState(false)
+
+  const [summary, setSummary] = useState<MonthlySummaryResponse | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState(false)
+
+  const loadMonthly = useCallback(async (y: number, m: number) => {
+    setMonthlyLoading(true)
+    setMonthlyError(false)
+
+    try {
+      const data = await apiClient.getMonthlyReport(y, m)
+      setMonthly(data)
+    } catch {
+      setMonthlyError(true)
+    } finally {
+      setMonthlyLoading(false)
+    }
   }, [])
+
+  const loadWeekly = useCallback(async (offset: number) => {
+    setWeeklyLoading(true)
+    setWeeklyError(false)
+
+    try {
+      const data = await apiClient.getWeeklyReport(offset)
+      setWeekly(data)
+    } catch {
+      setWeeklyError(true)
+    } finally {
+      setWeeklyLoading(false)
+    }
+  }, [])
+
+  const loadSummary = useCallback(async (y: number, m: number) => {
+    setSummaryLoading(true)
+    setSummaryError(false)
+
+    try {
+      const data = await apiClient.getMonthlySummary(y, m)
+      setSummary(data)
+    } catch {
+      setSummaryError(true)
+    } finally {
+      setSummaryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadMonthly(year, month)
+  }, [year, month, loadMonthly])
+
+  useEffect(() => {
+    if (activeTab === "weekly" && !weekly && !weeklyLoading) {
+      loadWeekly(weekOffset)
+    }
+  }, [activeTab, weekly, weeklyLoading, weekOffset, loadWeekly])
+
+  useEffect(() => {
+    if (
+      (activeTab === "monthly" || activeTab === "emotion") &&
+      !summary &&
+      !summaryLoading &&
+      !summaryError
+    ) {
+      loadSummary(year, month)
+    }
+  }, [
+    activeTab,
+    summary,
+    summaryLoading,
+    summaryError,
+    year,
+    month,
+    loadSummary,
+  ])
+
+  const goPrevMonth = () => {
+    if (!monthly?.prev_month) return
+    const [y, m] = monthly.prev_month.split("-")
+    setYear(Number(y))
+    setMonth(Number(m))
+    setSummary(null)
+    setSummaryError(false)
+  }
+
+  const goNextMonth = () => {
+    if (!monthly?.next_month) return
+    const [y, m] = monthly.next_month.split("-")
+    setYear(Number(y))
+    setMonth(Number(m))
+    setSummary(null)
+    setSummaryError(false)
+  }
+
+  const goPrevWeek = () => {
+    const next = weekOffset - 1
+    setWeekOffset(next)
+    loadWeekly(next)
+  }
+
+  const goNextWeek = () => {
+    const next = weekOffset + 1
+    setWeekOffset(next)
+    loadWeekly(next)
+  }
 
   return (
     <div
@@ -89,34 +187,6 @@ export default function EmotionReportPage() {
         </div>
 
         <div
-          className="rounded-[28px] p-5 mb-5"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 8px 24px rgba(61,53,48,0.06)",
-          }}
-        >
-          <div className="flex items-start gap-3">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ background: "#F8EFE7" }}
-            >
-              🦦
-            </div>
-
-            <div>
-              <p className="text-sm font-bold mb-1" style={{ color: "#C9856A" }}>
-                해도리의 한마디
-              </p>
-              <p className="text-sm leading-relaxed" style={{ color: "#6B625C" }}>
-                이번 달은 평온한 감정이 가장 자주 보였어요. 중간중간 피곤함과
-                불안이 올라왔지만, 다시 안정되는 흐름도 함께 보여요.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div
           className="grid grid-cols-3 gap-1.5 rounded-2xl p-1.5 mb-5"
           style={{ background: "#EDE8E0" }}
         >
@@ -139,14 +209,38 @@ export default function EmotionReportPage() {
 
         {activeTab === "emotion" && (
           <EmotionReportContent
-            moodSummary={moodSummary}
-            emotionDays={sampleEmotionDays}
+            data={monthly}
+            summary={summary}
+            summaryLoading={summaryLoading}
+            loading={monthlyLoading}
+            error={monthlyError}
+            onPrev={goPrevMonth}
+            onNext={goNextMonth}
+            onRetry={() => loadMonthly(year, month)}
           />
         )}
 
-        {activeTab === "weekly" && <WeeklyReportContent />}
+        {activeTab === "weekly" && (
+          <WeeklyReportContent
+            data={weekly}
+            loading={weeklyLoading}
+            error={weeklyError}
+            onPrev={goPrevWeek}
+            onNext={goNextWeek}
+            onRetry={() => loadWeekly(weekOffset)}
+          />
+        )}
 
-        {activeTab === "monthly" && <MonthlyReportContent />}
+        {activeTab === "monthly" && (
+          <MonthlyReportContent
+            data={summary}
+            loading={summaryLoading}
+            error={summaryError}
+            year={year}
+            month={month}
+            onRetry={() => loadSummary(year, month)}
+          />
+        )}
       </div>
     </div>
   )
@@ -177,188 +271,365 @@ function ReportTabButton({
   )
 }
 
-function EmotionReportContent({
-  moodSummary,
-  emotionDays,
+function CardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-[28px] p-5"
+      style={{
+        background: "#FFFCF8",
+        border: "1.5px solid #E5DDD5",
+        boxShadow: "0 8px 24px rgba(61,53,48,0.06)",
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function LoadingCard({ text }: { text: string }) {
+  return (
+    <CardShell>
+      <p className="text-sm text-center py-8" style={{ color: "#9A8F87" }}>
+        {text}
+      </p>
+    </CardShell>
+  )
+}
+
+function ErrorCard({ onRetry }: { onRetry: () => void }) {
+  return (
+    <CardShell>
+      <p className="text-sm text-center mb-4" style={{ color: "#9A8F87" }}>
+        불러오지 못했어요.
+      </p>
+      <button
+        onClick={onRetry}
+        type="button"
+        className="w-full py-3 rounded-2xl text-sm font-extrabold active:scale-95 transition-all"
+        style={{ background: "#F8EFE7", color: "#C9856A" }}
+      >
+        다시 시도
+      </button>
+    </CardShell>
+  )
+}
+
+function NavArrow({
+  direction,
+  disabled,
+  onClick,
 }: {
-  moodSummary: { mood: string; count: number }[]
-  emotionDays: EmotionDay[]
+  direction: "prev" | "next"
+  disabled: boolean
+  onClick: () => void
 }) {
   return (
-    <div className="flex flex-col gap-5">
-      <section
-        className="rounded-[28px] p-5"
-        style={{
-          background: "#FFFCF8",
-          border: "1.5px solid #E5DDD5",
-          boxShadow: "0 8px 24px rgba(61,53,48,0.06)",
-        }}
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      type="button"
+      aria-label={direction === "prev" ? "이전" : "다음"}
+      className="w-7 h-7 rounded-full flex items-center justify-center transition-all active:scale-95"
+      style={{ opacity: disabled ? 0.25 : 1 }}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#9A8F87"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="text-base font-extrabold">이번 달 감정 흐름</h2>
-            <p className="text-xs mt-1" style={{ color: "#9A8F87" }}>
-              날짜별 감정 점수 예시 그래프
-            </p>
-          </div>
+        <path d={direction === "prev" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6"} />
+      </svg>
+    </button>
+  )
+}
 
-          <span
-            className="px-3 py-1 rounded-full text-xs font-bold"
-            style={{ background: "#F8EFE7", color: "#C9856A" }}
+function HaedoriLetter({
+  title,
+  paragraphs,
+}: {
+  title: string
+  paragraphs: string[]
+}) {
+  return (
+    <CardShell>
+      <div className="flex items-center gap-2.5 mb-4">
+        <div
+          className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+          style={{ background: "#F8EFE7" }}
+        >
+          🦦
+        </div>
+        <h2 className="text-base font-extrabold">{title}</h2>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {paragraphs.map((text, i) => (
+          <p
+            key={i}
+            className="text-sm leading-[1.9]"
+            style={{ color: "#6B625C" }}
           >
-            5월
-          </span>
+            {text}
+          </p>
+        ))}
+      </div>
+    </CardShell>
+  )
+}
+
+function EmotionReportContent({
+  data,
+  summary,
+  summaryLoading,
+  loading,
+  error,
+  onPrev,
+  onNext,
+  onRetry,
+}: {
+  data: MonthlyReportResponse | null
+  summary: MonthlySummaryResponse | null
+  summaryLoading: boolean
+  loading: boolean
+  error: boolean
+  onPrev: () => void
+  onNext: () => void
+  onRetry: () => void
+}) {
+  if (error) return <ErrorCard onRetry={onRetry} />
+  if (loading && !data) return <LoadingCard text="감정 기록을 불러오는 중..." />
+  if (!data) return null
+
+  const firstWeekday = data.days.length > 0 ? (data.days[0].weekday + 1) % 7 : 0
+  const maxCount = data.mood_counts.length > 0 ? data.mood_counts[0].count : 1
+
+  return (
+    <div className="flex flex-col gap-5">
+      <CardShell>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-base font-extrabold">감정 흐름</h2>
+
+          <div className="flex items-center gap-2">
+            <NavArrow direction="prev" disabled={!data.prev_month} onClick={onPrev} />
+            <span
+              className="px-3 py-1 rounded-full text-xs font-bold"
+              style={{ background: "#F8EFE7", color: "#C9856A" }}
+            >
+              {data.year}년 {data.month}월
+            </span>
+            <NavArrow direction="next" disabled={!data.next_month} onClick={onNext} />
+          </div>
         </div>
 
-        <div className="h-52 flex items-end gap-2 overflow-x-auto pb-2">
-          {emotionDays.map((item) => (
-            <div
-              key={item.day}
-              className="flex flex-col items-center justify-end min-w-[34px]"
+        <p className="text-xs mb-4" style={{ color: "#9A8F87" }}>
+          기록한 날만 색으로 표시돼요
+        </p>
+
+        <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+          {WEEKDAY_HEADERS.map((w) => (
+            <span
+              key={w}
+              className="text-[10px] font-bold text-center"
+              style={{ color: "#9A8F87" }}
             >
-              <div
-                className="w-full rounded-t-xl transition-all"
-                style={{
-                  height: `${item.value * 1.55}px`,
-                  background: moodColors[item.mood] || "#A8BBA5",
-                }}
-              />
+              {w}
+            </span>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-1.5">
+          {Array.from({ length: firstWeekday }).map((_, i) => (
+            <div key={`pad-${i}`} className="aspect-square" />
+          ))}
+
+          {data.days.map((d) => (
+            <div
+              key={d.date}
+              className="aspect-square rounded-lg flex items-center justify-center"
+              style={{ background: d.color || EMPTY_CELL }}
+              title={d.label ? `${d.day}일 · ${d.label}` : `${d.day}일`}
+            >
               <span
-                className="text-[10px] font-bold mt-2"
-                style={{ color: "#9A8F87" }}
+                className="text-[9px] font-bold"
+                style={{ color: d.color ? "#3D3530" : "#BCB3AA" }}
               >
-                {item.day}
+                {d.day}
               </span>
             </div>
           ))}
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {moodSummary.slice(0, 6).map((item) => (
-            <div
-              key={item.mood}
-              className="rounded-2xl px-3 py-3"
-              style={{ background: "#F8F6F2" }}
-            >
-              <div className="flex items-center gap-1.5 mb-1">
+        {data.recorded_days === 0 && (
+          <p className="text-sm text-center mt-5" style={{ color: "#9A8F87" }}>
+            이 달엔 기록이 없어요.
+          </p>
+        )}
+      </CardShell>
+
+      {data.mood_counts.length > 0 && (
+        <CardShell>
+          <h2 className="text-base font-extrabold mb-4">감정별 일수</h2>
+
+          <div className="flex flex-col gap-2.5">
+            {data.mood_counts.map((m) => (
+              <div key={m.mood} className="flex items-center gap-2.5">
                 <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ background: moodColors[item.mood] }}
-                />
-                <span className="text-xs font-bold">{item.mood}</span>
+                  className="text-xs font-bold w-8 flex-shrink-0"
+                  style={{ color: "#6B625C" }}
+                >
+                  {m.label}
+                </span>
+
+                <div
+                  className="flex-1 h-4 rounded-md overflow-hidden"
+                  style={{ background: "#F1EFE8" }}
+                >
+                  <div
+                    className="h-full rounded-md transition-all"
+                    style={{
+                      width: `${Math.max(8, (m.count / maxCount) * 100)}%`,
+                      background: m.color,
+                    }}
+                  />
+                </div>
+
+                <span
+                  className="text-xs font-extrabold w-7 text-right flex-shrink-0"
+                  style={{ color: "#3D3530" }}
+                >
+                  {m.count}일
+                </span>
               </div>
-              <p className="text-xs" style={{ color: "#9A8F87" }}>
-                {item.count}일
-              </p>
+            ))}
+          </div>
+        </CardShell>
+      )}
+
+      {summaryLoading && !summary && data.recorded_days > 0 && (
+        <LoadingCard text="해도리가 편지를 쓰는 중..." />
+      )}
+
+      {summary && summary.insights.length > 0 && (
+        <HaedoriLetter title="해도리가 본 이번 달" paragraphs={summary.insights} />
+      )}
+    </div>
+  )
+}
+
+function WeeklyReportContent({
+  data,
+  loading,
+  error,
+  onPrev,
+  onNext,
+  onRetry,
+}: {
+  data: WeeklyReportResponse | null
+  loading: boolean
+  error: boolean
+  onPrev: () => void
+  onNext: () => void
+  onRetry: () => void
+}) {
+  if (error) return <ErrorCard onRetry={onRetry} />
+  if (loading && !data) return <LoadingCard text="이번 주 기록을 불러오는 중..." />
+  if (!data) return null
+
+  return (
+    <div className="flex flex-col gap-5">
+      <CardShell>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-extrabold">주간 흐름</h2>
+
+          <div className="flex items-center gap-2">
+            <NavArrow direction="prev" disabled={!data.has_prev} onClick={onPrev} />
+            <span
+              className="px-3 py-1 rounded-full text-xs font-bold"
+              style={{ background: "#F8EFE7", color: "#C9856A" }}
+            >
+              {formatRange(data.start_date, data.end_date)}
+            </span>
+            <NavArrow direction="next" disabled={!data.has_next} onClick={onNext} />
+          </div>
+        </div>
+
+        <div className="flex gap-1.5 mb-5">
+          {data.days.map((d) => (
+            <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5">
+              <div
+                className="w-full aspect-square rounded-xl"
+                style={{ background: d.color || EMPTY_CELL }}
+                title={d.label ? `${d.weekday_label} · ${d.label}` : d.weekday_label}
+              />
+              <span className="text-[10px] font-bold" style={{ color: "#9A8F87" }}>
+                {d.weekday_label}
+              </span>
             </div>
           ))}
         </div>
-      </section>
-
-      <section
-        className="rounded-[28px] p-5"
-        style={{
-          background: "#FFFCF8",
-          border: "1.5px solid #E5DDD5",
-        }}
-      >
-        <h2 className="text-base font-extrabold mb-3">감정 요약</h2>
 
         <div className="space-y-3">
-          <SummaryRow title="가장 자주 느낀 감정" content="평온" />
-          <SummaryRow title="가장 높았던 감정" content="기쁨 · 6일, 14일" />
-          <SummaryRow title="주의 깊게 볼 감정" content="피곤 · 불안" />
+          {data.highlights.map((text, i) => (
+            <ReportCardNumber key={i} number={String(i + 1)} text={text} />
+          ))}
         </div>
-      </section>
+      </CardShell>
+
+      <HaedoriLetter title="해도리가 본 이번 주" paragraphs={[data.comment]} />
     </div>
   )
 }
 
-function WeeklyReportContent() {
+function MonthlyReportContent({
+  data,
+  loading,
+  error,
+  year,
+  month,
+  onRetry,
+}: {
+  data: MonthlySummaryResponse | null
+  loading: boolean
+  error: boolean
+  year: number
+  month: number
+  onRetry: () => void
+}) {
+  if (error) return <ErrorCard onRetry={onRetry} />
+  if (loading && !data)
+    return <LoadingCard text="해도리가 이번 달을 정리하는 중..." />
+  if (!data) return null
+
   return (
-    <div
-      className="rounded-[28px] p-5"
-      style={{
-        background: "#FFFCF8",
-        border: "1.5px solid #E5DDD5",
-        boxShadow: "0 8px 24px rgba(61,53,48,0.06)",
-      }}
-    >
-      <h2 className="text-base font-extrabold mb-2">이번 주 리포트</h2>
-      <p className="text-sm leading-relaxed mb-5" style={{ color: "#6B625C" }}>
-        이번 주에는 감정이 초반에 조금 내려갔다가 후반으로 갈수록 안정되는
-        흐름을 보였어요.
-      </p>
+    <div className="flex flex-col gap-5">
+      <CardShell>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-extrabold">월별 리포트</h2>
+          <span
+            className="px-3 py-1 rounded-full text-xs font-bold"
+            style={{ background: "#F8EFE7", color: "#C9856A" }}
+          >
+            {year}년 {month}월
+          </span>
+        </div>
 
-      <div className="space-y-3 mb-5">
-        <ReportCardNumber number="1" text="가장 기억에 남는 일기 주제: 공부와 계획" />
-        <ReportCardNumber number="2" text="가장 자주 나온 감정: 평온" />
-        <ReportCardNumber number="3" text="감정 변화 포인트: 피곤함에서 안정감으로 회복" />
-      </div>
-
-      <div
-        className="rounded-2xl p-4"
-        style={{ background: "#F8EFE7", color: "#6B625C" }}
-      >
-        <p className="text-sm leading-relaxed">
-          해도리가 보기엔 이번 주의 너는 조금 지쳐 있었지만, 스스로 다시
-          균형을 찾으려는 힘이 있었어. 다음 주에는 해야 할 일을 줄이기보다
-          회복 시간을 먼저 확보해보면 좋아.
+        <p className="text-sm leading-[1.9] mb-5" style={{ color: "#6B625C" }}>
+          {data.summary}
         </p>
-      </div>
-    </div>
-  )
-}
 
-function MonthlyReportContent() {
-  return (
-    <div
-      className="rounded-[28px] p-5"
-      style={{
-        background: "#FFFCF8",
-        border: "1.5px solid #E5DDD5",
-        boxShadow: "0 8px 24px rgba(61,53,48,0.06)",
-      }}
-    >
-      <h2 className="text-base font-extrabold mb-2">이번 달 리포트</h2>
-      <p className="text-sm leading-relaxed mb-5" style={{ color: "#6B625C" }}>
-        이번 달은 전체적으로 평온함이 중심이었고, 특정 시점에 피곤함과 불안이
-        올라오는 패턴이 보였어요.
-      </p>
+        <div className="space-y-3">
+          {data.highlights.map((text, i) => (
+            <ReportCardNumber key={i} number={String(i + 1)} text={text} />
+          ))}
+        </div>
+      </CardShell>
 
-      <div className="space-y-3 mb-5">
-        <ReportCardNumber number="1" text="대표 사건: 새로운 목표를 세운 날" />
-        <ReportCardNumber number="2" text="대표 사건: 컨디션이 크게 떨어진 날" />
-        <ReportCardNumber number="3" text="대표 사건: 만족감이 크게 올라온 날" />
-      </div>
-
-      <div
-        className="rounded-2xl p-4"
-        style={{ background: "#F8EFE7", color: "#6B625C" }}
-      >
-        <p className="text-sm leading-relaxed">
-          해도리가 보기엔 이번 달의 가장 큰 흐름은 “다시 나를 정돈하는 과정”에
-          가까워. 감정이 흔들린 날도 있었지만, 결국 다시 평온으로 돌아오는 힘이
-          있었어. 다음 달에는 피곤함이 반복되는 시점을 조금 더 자세히 기록해보면
-          좋아.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function SummaryRow({ title, content }: { title: string; content: string }) {
-  return (
-    <div
-      className="flex items-center justify-between rounded-2xl px-4 py-3"
-      style={{ background: "#F8F6F2" }}
-    >
-      <span className="text-sm font-bold" style={{ color: "#6B625C" }}>
-        {title}
-      </span>
-      <span className="text-sm font-extrabold" style={{ color: "#C9856A" }}>
-        {content}
-      </span>
+      <HaedoriLetter title="해도리의 편지" paragraphs={[data.comment]} />
     </div>
   )
 }

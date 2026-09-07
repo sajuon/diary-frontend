@@ -60,6 +60,72 @@ export type QuestionHistoryResponse = {
   items: QuestionHistoryItem[]
 }
 
+export type MoodCount = {
+  mood: string
+  label: string
+  color: string
+  count: number
+}
+
+export type DayMood = {
+  date: string
+  day: number
+  weekday: number
+  mood?: string | null
+  label?: string | null
+  color?: string | null
+}
+
+export type MonthlyReportResponse = {
+  year: number
+  month: number
+  days: DayMood[]
+  mood_counts: MoodCount[]
+  recorded_days: number
+  total_days: number
+  top_mood?: string | null
+  top_mood_label?: string | null
+  positive_days: number
+  caution_days: number
+  available_months: string[]
+  prev_month?: string | null
+  next_month?: string | null
+}
+
+export type WeeklyDay = {
+  date: string
+  weekday: number
+  weekday_label: string
+  mood?: string | null
+  label?: string | null
+  color?: string | null
+  summary_tag?: string | null
+}
+
+export type WeeklyReportResponse = {
+  start_date: string
+  end_date: string
+  days: WeeklyDay[]
+  mood_counts: MoodCount[]
+  recorded_days: number
+  top_mood_label?: string | null
+  highlights: string[]
+  comment: string
+  has_prev: boolean
+  has_next: boolean
+}
+
+export type MonthlySummaryResponse = {
+  year: number
+  month: number
+  insights: string[]
+  summary: string
+  highlights: string[]
+  comment: string
+  source_type: string
+  cached: boolean
+}
+
 class ApiClient {
   private baseURL: string
   private refreshPromise: Promise<string | null> | null = null
@@ -206,6 +272,13 @@ class ApiClient {
     )
   }
 
+  async reviewerLogin(email: string, password: string) {
+    return this.post<{ access_token: string; token_type?: string }>(
+      "/api/auth/reviewer-login",
+      { username: email, password }
+    )
+  }
+
   async oauthLogin(
     provider: "kakao" | "google",
     code: string,
@@ -335,6 +408,24 @@ class ApiClient {
         reason: string
       }>
     }>("/api/diary/summary-tag/batch-missing")
+  }
+
+  async getMonthlyReport(year: number, month: number) {
+    return this.get<MonthlyReportResponse>(
+      `/api/reports/monthly?year=${year}&month=${month}`
+    )
+  }
+
+  async getWeeklyReport(offset = 0) {
+    return this.get<WeeklyReportResponse>(
+      `/api/reports/weekly?offset=${offset}`
+    )
+  }
+
+  async getMonthlySummary(year: number, month: number) {
+    return this.get<MonthlySummaryResponse>(
+      `/api/reports/monthly-summary?year=${year}&month=${month}`
+    )
   }
 
   async getLetters(month: string) {
