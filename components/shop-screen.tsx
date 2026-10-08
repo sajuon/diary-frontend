@@ -17,25 +17,16 @@ interface ShopScreenProps {
 
 const categories = [
   { id: "theme", label: "방 테마", icon: "🏠" },
-  { id: "furniture", label: "가구", icon: "🛋️" },
+  { id: "items", label: "소품", icon: "🪴" },
   { id: "food", label: "간식", icon: "🍰" },
-  { id: "deco", label: "소품", icon: "🪴" },
 ] as const
 
 type CategoryId = (typeof categories)[number]["id"]
 
 const shopItems: Record<
-  Exclude<CategoryId, "theme">,
+  Exclude<CategoryId, "theme" | "items">,
   Array<{ id: string; name: string; pearls: number; bg: string; emoji: string }>
 > = {
-  furniture: [
-    { id: "fn1", name: "원목 책상", pearls: 300, bg: "#D4B8A8", emoji: "🪑" },
-    { id: "fn2", name: "빈백 소파", pearls: 350, bg: "#F2C4A8", emoji: "🛋️" },
-    { id: "fn3", name: "별모양 램프", pearls: 180, bg: "#F4E8A8", emoji: "⭐" },
-    { id: "fn4", name: "미니 책장", pearls: 260, bg: "#C8D8C8", emoji: "📚" },
-    { id: "fn5", name: "둥근 침대", pearls: 500, bg: "#F0C4C4", emoji: "🛏️" },
-    { id: "fn6", name: "창문 커튼", pearls: 150, bg: "#C8D8E8", emoji: "🪟" },
-  ],
   food: [
     { id: "fd1", name: "딸기 케이크", pearls: 80, bg: "#F0C4C4", emoji: "🍓" },
     { id: "fd2", name: "마카롱 세트", pearls: 100, bg: "#F2C4A8", emoji: "🍬" },
@@ -43,14 +34,6 @@ const shopItems: Record<
     { id: "fd4", name: "귤 바구니", pearls: 60, bg: "#F4E8A8", emoji: "🍊" },
     { id: "fd5", name: "꿀단지", pearls: 90, bg: "#F4C97A", emoji: "🍯" },
     { id: "fd6", name: "쿠키 상자", pearls: 85, bg: "#D4B8A8", emoji: "🍪" },
-  ],
-  deco: [
-    { id: "dc1", name: "해달 인형", pearls: 200, bg: "#F2C4A8", emoji: "🦦" },
-    { id: "dc2", name: "미니 화분", pearls: 120, bg: "#A8BBA5", emoji: "🌱" },
-    { id: "dc3", name: "무지개 모빌", pearls: 160, bg: "#C8D8E8", emoji: "🌈" },
-    { id: "dc4", name: "달 거울", pearls: 250, bg: "#E8E4E0", emoji: "🌙" },
-    { id: "dc5", name: "리본 액자", pearls: 140, bg: "#F0C4C4", emoji: "🎀" },
-    { id: "dc6", name: "초 세트", pearls: 110, bg: "#F4E8A8", emoji: "🕯️" },
   ],
 }
 
@@ -186,7 +169,14 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
     if (typeof pearls === "number") setLocalPearls(pearls)
   }, [pearls])
 
-  const items = activeCategory === "theme" ? [] : shopItems[activeCategory] || []
+  const items =
+    activeCategory === "theme" || activeCategory === "items" ? [] : shopItems[activeCategory] || []
+
+  // /shop?tab=items 처럼 탭을 지정해서 들어올 수 있게
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab")
+    if (tab && categories.some((c) => c.id === tab)) setActiveCategory(tab as CategoryId)
+  }, [])
   const ownedBackendIds = useMemo(() => extractOwnedBackendIds(purchases), [purchases])
 
   const [infoOpen, setInfoOpen] = useState(false)
@@ -399,6 +389,8 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
       <div className="flex-1 overflow-y-auto px-5 pb-8">
         {activeCategory === "theme" ? (
           <CustomizationShop kind="theme" />
+        ) : activeCategory === "items" ? (
+          <CustomizationShop kind="room_item" />
         ) : (
         <div className="grid grid-cols-2 gap-3">
           {items.map((item) => {

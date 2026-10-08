@@ -1,18 +1,23 @@
 "use client"
 
-// 방 테마 / 편지지처럼 "사서 하나를 골라 적용하는" 상품 목록.
-// 해도리 상점의 '방 테마' 탭과 편지지 상점이 같이 쓴다.
+// 진주로 사는 꾸미기 상품 목록.
+// - 방 테마 / 편지지: 사서 하나를 골라 "적용"
+// - 소품: 사서 해도리 방에 "배치" (꾸미기 모드로 이동)
+// 해도리 상점의 '방 테마'·'소품' 탭과 편지지 상점이 같이 쓴다.
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import RoomBackground from "@/components/room-background"
+import { RoomItemArt } from "@/components/room-item-view"
 import { LetterPaperCard, LetterText } from "@/components/letter-paper"
 import { apiClient } from "@/lib/api"
 import { LETTER_PAPERS, getLetterPaper, writeCachedPaperKey } from "@/lib/letter-papers"
 import { notifyPearlBalance } from "@/lib/pearl-events"
+import { ROOM_ITEMS } from "@/lib/room-items"
 import { ROOM_THEMES, getRoomTheme, writeCachedThemeKey } from "@/lib/room-themes"
 import { useUserPearls } from "@/hooks/use-user-pearls"
 
-export type CustomizationKind = "theme" | "letter_paper"
+export type CustomizationKind = "theme" | "letter_paper" | "room_item"
 
 type ShopItem = {
   id: number
@@ -51,9 +56,29 @@ const CONFIG = {
     appliedFrom: (room: { letter_paper_key: string }) => room.letter_paper_key,
     nounForConfirm: "편지지",
   },
+  room_item: {
+    catalog: ROOM_ITEMS as Record<string, { name: string }>,
+    defaultDescription: "",
+    cacheWrite: (_key: string) => {},
+    apply: (_key: string) => apiClient.getRoom(),
+    appliedFrom: (_room: unknown) => "",
+    nounForConfirm: "소품",
+  },
 } as const
 
 function Preview({ kind, itemKey }: { kind: CustomizationKind; itemKey: string }) {
+  if (kind === "room_item") {
+    const item = ROOM_ITEMS[itemKey]
+    const theme = getRoomTheme("default")
+    return (
+      <div
+        className="flex w-full aspect-[4/5] items-center justify-center overflow-hidden p-5"
+        style={{ background: item?.zone === "wall" ? theme.base : "linear-gradient(180deg, #F8E8D8 0%, #F1D5B9 100%)" }}
+      >
+        {item && <RoomItemArt item={item} className="max-h-full max-w-[85%] drop-shadow-sm" />}
+      </div>
+    )
+  }
   if (kind === "theme") {
     return (
       <div className="relative w-full aspect-[4/5] overflow-hidden">
@@ -80,6 +105,8 @@ function Preview({ kind, itemKey }: { kind: CustomizationKind; itemKey: string }
 
 export default function CustomizationShop({ kind }: { kind: CustomizationKind }) {
   const config = CONFIG[kind]
+  const isRoomItem = kind === "room_item"
+  const router = useRouter()
   const pearls = useUserPearls()
 
   const [items, setItems] = useState<ShopItem[]>([])
@@ -112,12 +139,16 @@ export default function CustomizationShop({ kind }: { kind: CustomizationKind })
 
   // 프론트 카탈로그에 있는 키만 보여준다 (모르는 키는 그릴 수 없으므로 숨김)
   const cards: Card[] = [
-    {
-      key: DEFAULT_KEY,
-      name: config.catalog[DEFAULT_KEY].name,
-      description: config.defaultDescription,
-      price: 0,
-    },
+    ...(isRoomItem
+      ? []
+      : [
+          {
+            key: DEFAULT_KEY,
+            name: config.catalog[DEFAULT_KEY].name,
+            description: config.defaultDescription,
+            price: 0,
+          },
+        ]),
     ...items
       .filter((item) => item.item_key && config.catalog[item.item_key])
       .map((item) => ({
@@ -161,6 +192,10 @@ export default function CustomizationShop({ kind }: { kind: CustomizationKind })
     }
     setBusyKey(null)
 
+    if (isRoomItem) {
+      if (confirm(`'${card.name}'을(를) 지금 방에 놓아볼까요?`)) router.push("/haedori?decorate=1")
+      return
+    }
     if (confirm(`'${card.name}' ${config.nounForConfirm}를 바로 적용할까요?`)) {
       await handleApply(card.key)
     }
@@ -177,8 +212,9 @@ export default function CustomizationShop({ kind }: { kind: CustomizationKind })
   return (
     <div className="grid grid-cols-2 gap-3">
       {cards.map((card) => {
-        const owned = card.key === DEFAULT_KEY || Boolean(card.item && ownedItemIds.has(card.item.id))
-        const applied = card.key === appliedKey
+        const owned =
+          (!isRoomItem && card.key === DEFAULT_KEY) || Boolean(card.item && ownedItemIds.has(card.item.id))
+        const applied = !isRoomItem && card.key === appliedKey
         const busy = busyKey === card.key
         const affordable = typeof pearls === "number" && pearls >= card.price
 
@@ -190,7 +226,7 @@ export default function CustomizationShop({ kind }: { kind: CustomizationKind })
           disabled = true
           primary = false
         } else if (owned) {
-          label = "적용하기"
+          label = isRoomItem ? "배치하기" : "적용하기"
         } else if (!affordable) {
           label = "진주 부족"
           disabled = true
@@ -252,7 +288,13 @@ export default function CustomizationShop({ kind }: { kind: CustomizationKind })
                 </div>
 
                 <button
-                  onClick={() => (owned ? handleApply(card.key) : handlePurchase(card))}
+                  onClick={() =>
+                    owned
+                      ? isRoomItem
+                        ? router.push("/haedori?decorate=1")
+                        : handleApply(card.key)
+                      : handlePurchase(card)
+                  }
                   disabled={disabled}
                   className="rounded-2xl px-3.5 py-2 text-xs font-extrabold transition-all active:scale-95 disabled:cursor-not-allowed"
                   style={{

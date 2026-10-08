@@ -17,6 +17,8 @@ export type RoomState = {
   owned_theme_keys: string[]
   letter_paper_key: string
   owned_letter_paper_keys: string[]
+  owned_room_item_keys: string[]
+  placements: Array<{ item_key: string; x: number; y: number }>
 }
 
 export type LetterFeedback = {
@@ -520,6 +522,10 @@ class ApiClient {
 
   async setRoomTheme(themeKey: string) {
     return this.put<RoomState>("/api/room/theme", { theme_key: themeKey })
+  }
+
+  async setRoomPlacements(placements: Array<{ item_key: string; x: number; y: number }>) {
+    return this.put<RoomState>("/api/room/placements", { placements })
   }
 
   async setLetterPaper(letterPaperKey: string) {

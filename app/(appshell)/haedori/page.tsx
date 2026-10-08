@@ -1,10 +1,18 @@
 // /home/dori/diary-frontend/app/(appshell)/haedori/page.tsx
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
 import RoomBackground from "@/components/room-background"
+import RoomItemView, { RoomItemArt } from "@/components/room-item-view"
 import { apiClient } from "@/lib/api"
+import {
+  ROOM_ITEMS,
+  clampPlacement,
+  defaultPlacement,
+  type Placement,
+} from "@/lib/room-items"
 import {
   DEFAULT_THEME_KEY,
   getRoomTheme,
@@ -23,11 +31,32 @@ const messages = [
   "마음이 복잡하면 천천히 말해줘.",
 ]
 
+const menuItems = [
+  { label: "해도리 상점", image: "/images/icons/snackmarket.png", path: "/shop" },
+  { label: "해도리 답장", image: "/images/icons/mailbox.png", path: "/letterbox" },
+  { label: "편지지 상점", image: "/images/icons/pearlshop.png", path: "/letter-shop" },
+]
+
+type DragState = { key: string; pointerId: number; dx: number; dy: number }
+
 export default function HaedoriPage() {
   const router = useRouter()
+  const roomRef = useRef<HTMLDivElement>(null)
+
   const [message, setMessage] = useState(messages[2])
   const [themeKey, setThemeKey] = useState(DEFAULT_THEME_KEY)
   const theme = getRoomTheme(themeKey)
+
+  const [ownedItemKeys, setOwnedItemKeys] = useState<string[]>([])
+  const [placements, setPlacements] = useState<Placement[]>([])
+
+  // 꾸미기 모드
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<Placement[]>([])
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [trayOpen, setTrayOpen] = useState(true)
+  const dragRef = useRef<DragState | null>(null)
 
   useEffect(() => {
     // 캐시로 먼저 그리고, 서버 값으로 맞춘다
@@ -37,198 +66,334 @@ export default function HaedoriPage() {
       .then((room) => {
         setThemeKey(room.theme_key)
         writeCachedThemeKey(room.theme_key)
+        setOwnedItemKeys(room.owned_room_item_keys ?? [])
+        setPlacements(room.placements ?? [])
+        // 상점에서 '배치하기'로 들어온 경우 바로 꾸미기 모드
+        if (new URLSearchParams(window.location.search).get("decorate")) {
+          setDraft(room.placements ?? [])
+          setEditing(true)
+        }
       })
-      .catch((err) => console.warn("Failed to load room theme:", err))
+      .catch((err) => console.warn("Failed to load room:", err))
   }, [])
 
   const changeMessage = () => {
     const candidates = messages.filter((m) => m !== message)
-    const next = candidates[Math.floor(Math.random() * candidates.length)]
-    setMessage(next)
+    setMessage(candidates[Math.floor(Math.random() * candidates.length)])
   }
 
-  const menuItems = [
-    { label: "해도리 상점", image: "/images/icons/snackmarket.png", path: "/shop" },
-    { label: "해도리 답장", image: "/images/icons/mailbox.png", path: "/letterbox" },
-    { label: "편지지 상점", image: "/images/icons/pearlshop.png", path: "/letter-shop" },
-  ]
+  // ===== 꾸미기 =====
+
+  const startEditing = () => {
+    setDraft(placements)
+    setSelectedKey(null)
+    setTrayOpen(true)
+    setEditing(true)
+  }
+
+  const cancelEditing = () => {
+    setEditing(false)
+    setSelectedKey(null)
+  }
+
+  const saveEditing = async () => {
+    try {
+      setSaving(true)
+      const room = await apiClient.setRoomPlacements(draft)
+      setPlacements(room.placements ?? [])
+      setOwnedItemKeys(room.owned_room_item_keys ?? [])
+      setEditing(false)
+      setSelectedKey(null)
+    } catch (error: any) {
+      alert(error?.message || "배치를 저장하지 못했어요.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const togglePlace = (key: string) => {
+    const item = ROOM_ITEMS[key]
+    if (!item) return
+    if (draft.some((p) => p.item_key === key)) {
+      setSelectedKey(key)
+      return
+    }
+    setDraft((prev) => [...prev, clampPlacement(item, defaultPlacement(item, prev.length))])
+    setSelectedKey(key)
+  }
+
+  const removeItem = (key: string) => {
+    setDraft((prev) => prev.filter((p) => p.item_key !== key))
+    setSelectedKey(null)
+  }
+
+  const toPercent = useCallback((clientX: number, clientY: number) => {
+    const rect = roomRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
+    }
+  }, [])
+
+  const handleItemPointerDown = (key: string) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    const current = draft.find((p) => p.item_key === key)
+    if (!current) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const point = toPercent(e.clientX, e.clientY)
+    dragRef.current = { key, pointerId: e.pointerId, dx: current.x - point.x, dy: current.y - point.y }
+    setSelectedKey(key)
+  }
+
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== e.pointerId) return
+    const item = ROOM_ITEMS[drag.key]
+    if (!item) return
+    const point = toPercent(e.clientX, e.clientY)
+    const next = clampPlacement(item, { item_key: drag.key, x: point.x + drag.dx, y: point.y + drag.dy })
+    setDraft((prev) => prev.map((p) => (p.item_key === drag.key ? next : p)))
+  }
+
+  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null
+  }
+
+  const shown = editing ? draft : placements
+  const ownedItems = ownedItemKeys.map((k) => ROOM_ITEMS[k]).filter(Boolean)
 
   return (
     <div
+      ref={roomRef}
       className="relative h-[100dvh] overflow-hidden px-5 pt-5 pb-0"
       style={{ background: theme.base }}
+      onPointerMove={editing ? handlePointerMove : undefined}
+      onPointerUp={editing ? handlePointerUp : undefined}
+      onPointerCancel={editing ? handlePointerUp : undefined}
+      onPointerDown={() => {
+        // 소품이 아닌 곳을 누르면 선택 해제 (소품은 이벤트 전파를 막음)
+        if (editing) setSelectedKey(null)
+      }}
     >
       <RoomBackground theme={theme} />
 
-      {/* 왼쪽 식물 */}
-      <div className="absolute left-[-10px] bottom-[11%] z-[1] h-40 w-32 pointer-events-none">
-        <div className="absolute bottom-0 left-5 h-14 w-16 rounded-b-[24px] rounded-t-md bg-[#C99867]" />
-        <div className="absolute bottom-10 left-[54px] h-24 w-2 rounded-full bg-[#87A96B] -rotate-6" />
-        <div className="absolute bottom-[104px] left-5 h-8 w-14 rounded-full bg-[#8FB173] -rotate-[22deg]" />
-        <div className="absolute bottom-[88px] left-[55px] h-8 w-14 rounded-full bg-[#9BBC7D] rotate-[16deg]" />
-        <div className="absolute bottom-[70px] left-2 h-7 w-12 rounded-full bg-[#7FA365] rotate-[28deg]" />
-        <div className="absolute bottom-[122px] left-[58px] h-7 w-11 rounded-full bg-[#A6C68A] rotate-[42deg]" />
-      </div>
+      {/* 소품 */}
+      {shown.map((p) => {
+        const item = ROOM_ITEMS[p.item_key]
+        if (!item) return null
+        return (
+          <RoomItemView
+            key={p.item_key}
+            item={item}
+            placement={p}
+            editing={editing}
+            selected={editing && selectedKey === p.item_key}
+            onPointerDown={handleItemPointerDown(p.item_key)}
+            onRemove={() => removeItem(p.item_key)}
+          />
+        )
+      })}
 
-      {/* 벽 메모 */}
-      <div className="absolute left-[19%] top-[37%] z-[1] pointer-events-none opacity-60">
-        <div className="absolute h-10 w-9 rotate-[-6deg] rounded-sm bg-[#F3D9BA] shadow-sm" />
-        <div className="absolute left-8 top-9 h-9 w-14 rotate-[4deg] rounded-sm bg-[#F1D8B8] shadow-sm" />
-        <div className="absolute left-1 top-[88px] h-10 w-10 rotate-[3deg] rounded-sm bg-[#F5DDC5] shadow-sm" />
-        <div className="absolute left-[14px] top-2 text-[14px] text-[#9DBB7D]">⌁</div>
-        <div className="absolute left-[52px] top-[50px] text-[9px] font-bold text-[#C9A47D]">
-          Today
-        </div>
-        <div className="absolute left-[15px] top-[100px] text-[15px] text-[#E7A686]">♥</div>
-      </div>
-
-      {/* 오른쪽 조명 */}
-      <div className="absolute right-[-4px] bottom-[11%] z-[1] pointer-events-none">
-        <div
-          className="mx-auto h-12 w-16 rounded-t-full"
-          style={{
-            background:
-              "linear-gradient(180deg, #FFE9B8 0%, #FFD99E 100%)",
-            boxShadow: "0 0 22px rgba(255,211,142,0.35)",
-          }}
-        />
-        <div className="mx-auto h-10 w-2 bg-[#C89968]" />
-        <div className="h-4 w-20 rounded-full bg-[#C99C70]" />
-      </div>
-
-      {/* 오른쪽 책/컵 */}
-      <div className="absolute right-1 bottom-[2%] z-[1] pointer-events-none opacity-90">
-        <div className="absolute right-0 bottom-0 h-5 w-20 rounded-sm bg-[#8AA4A1]" />
-        <div className="absolute right-2 bottom-5 h-5 w-20 rounded-sm bg-[#F1B28F]" />
-        <div className="absolute right-4 bottom-10 h-5 w-20 rounded-sm bg-[#F5D1A4]" />
-        <div className="absolute right-[78px] bottom-0 h-8 w-7 rounded-b-lg rounded-t-sm border-2 border-[#C9A47D] bg-[#FFF7EF]" />
-      </div>
-
-      {/* 왼쪽 쿠션 */}
+      {/* 해도리: 바닥 중간쯤에 서 있음. 이보다 아래 놓인 바닥 소품은 해도리 앞에 그려진다 */}
       <div
-        className="absolute left-[-24px] bottom-[-10px] z-[1] h-20 w-32 rounded-[45%] pointer-events-none"
+        className="pointer-events-none absolute bottom-[12%] left-1/2 z-[19] h-7 w-[44%] -translate-x-1/2 translate-y-1/2 rounded-full"
         style={{
           background:
-            "linear-gradient(180deg, #E7A47E 0%, #CF7F62 100%)",
-          boxShadow: "0 8px 18px rgba(139,81,59,0.16)",
+            "radial-gradient(ellipse, rgba(61,53,48,0.16) 0%, rgba(61,53,48,0.06) 48%, rgba(61,53,48,0) 74%)",
         }}
       />
+      <button
+        onClick={changeMessage}
+        className="absolute bottom-[12%] left-1/2 z-20 -translate-x-1/2 transition-all active:scale-95"
+        style={{ border: "none", background: "transparent", padding: 0, pointerEvents: editing ? "none" : "auto" }}
+        aria-label="해도리 말 걸기"
+      >
+        <img src="/images/haedori-body.png" alt="해도리" className="h-48 w-48 object-contain drop-shadow-xl" />
+      </button>
 
       {/* 헤더 */}
-      <div className="relative z-20 flex items-center justify-between">
-        <button
-          onClick={() => router.push("/home")}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-lg active:scale-95 transition-all"
-          style={{
-            background: "rgba(255,255,255,0.88)",
-            border: "1.5px solid #E5D1C3",
-            color: "#3D3530",
-            boxShadow: "0 4px 12px rgba(61,53,48,0.05)",
-          }}
-          aria-label="뒤로가기"
-        >
-          ‹
-        </button>
-
-        <h1 className="text-lg font-extrabold" style={{ color: theme.title }}>
-          해도리
-        </h1>
-
-        <div className="w-11" />
+      <div className="relative z-[60] flex items-center justify-between">
+        {editing ? (
+          <>
+            <button
+              onClick={cancelEditing}
+              className="rounded-full px-4 py-2 text-sm font-bold"
+              style={{ background: "rgba(255,255,255,0.9)", border: "1.5px solid #E5D1C3", color: "#6B6059" }}
+            >
+              취소
+            </button>
+            <h1 className="text-base font-extrabold" style={{ color: theme.title }}>
+              꾸미는 중
+            </h1>
+            <button
+              onClick={saveEditing}
+              disabled={saving}
+              className="rounded-full px-4 py-2 text-sm font-extrabold disabled:opacity-60"
+              style={{ background: "#C9856A", color: "#FFFCF8" }}
+            >
+              {saving ? "저장 중" : "저장"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => router.push("/home")}
+              className="flex h-11 w-11 items-center justify-center rounded-full text-lg transition-all active:scale-95"
+              style={{
+                background: "rgba(255,255,255,0.88)",
+                border: "1.5px solid #E5D1C3",
+                color: "#3D3530",
+                boxShadow: "0 4px 12px rgba(61,53,48,0.05)",
+              }}
+              aria-label="뒤로가기"
+            >
+              ‹
+            </button>
+            <h1 className="text-lg font-extrabold" style={{ color: theme.title }}>
+              해도리
+            </h1>
+            <button
+              onClick={startEditing}
+              className="flex h-11 items-center gap-1 rounded-full px-3 text-xs font-extrabold transition-all active:scale-95"
+              style={{ background: "rgba(255,255,255,0.88)", border: "1.5px solid #E5D1C3", color: "#6B6059" }}
+              aria-label="방 꾸미기"
+            >
+              🪴 꾸미기
+            </button>
+          </>
+        )}
       </div>
 
-      <div className="relative z-10 h-[calc(100dvh-64px)]">
-        {/* 우측 메뉴 */}
-        <div className="absolute right-0 top-[64px] z-30 flex flex-col items-center gap-5">
-          {menuItems.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => router.push(item.path)}
-              className="flex flex-col items-center gap-1 active:scale-95 transition-all"
-              style={{ background: "transparent", border: "none" }}
-              aria-label={item.label}
-            >
-              <img
-                src={item.image}
-                alt={item.label}
-                className="h-14 w-14 object-contain drop-shadow-xl"
-              />
-
-              <span
-                className="text-[10px] font-extrabold whitespace-nowrap"
-                style={{
-                  color: "#FFF7EF",
-                  textShadow: "0 2px 6px rgba(0,0,0,0.55)",
-                }}
+      {!editing && (
+        <>
+          {/* 우측 메뉴 */}
+          <div className="absolute right-4 top-[92px] z-[60] flex flex-col items-center gap-4">
+            {menuItems.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => router.push(item.path)}
+                className="flex flex-col items-center gap-1 transition-all active:scale-95"
+                style={{ background: "transparent", border: "none" }}
+                aria-label={item.label}
               >
-                {item.label}
-              </span>
-            </button>
-          ))}
-        </div>
+                <img src={item.image} alt="" className="h-14 w-14 object-contain drop-shadow-xl" />
+                <span
+                  className="whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-extrabold"
+                  style={{ background: "rgba(61,53,48,0.62)", color: "#FFF7EF" }}
+                >
+                  {item.label}
+                </span>
+              </button>
+            ))}
+          </div>
 
-        {/* 말풍선 */}
-        <div className="absolute left-1/2 top-[14%] z-20 w-[82%] max-w-[300px] -translate-x-1/2">
-          <div
-            className="relative rounded-[28px] px-5 py-4 text-center text-sm font-extrabold leading-6"
-            style={{
-              background: "rgba(255,252,248,0.96)",
-              color: "#3D3530",
-              border: "1.5px solid #E5D1C3",
-              boxShadow: "0 8px 20px rgba(61,53,48,0.09)",
-            }}
-          >
-            {message}
-
+          {/* 말풍선 */}
+          <div className="absolute left-[8%] top-[13%] z-[55] w-[62%] max-w-[260px]">
             <div
-              className="absolute left-1/2 -bottom-2 h-4 w-4"
+              className="relative rounded-[28px] px-5 py-4 text-center text-sm font-extrabold leading-6"
               style={{
                 background: "rgba(255,252,248,0.96)",
-                borderRight: "1.5px solid #E5D1C3",
-                borderBottom: "1.5px solid #E5D1C3",
-                transform: "translateX(-50%) rotate(45deg)",
+                color: "#3D3530",
+                border: "1.5px solid #E5D1C3",
+                boxShadow: "0 8px 20px rgba(61,53,48,0.09)",
               }}
-            />
+            >
+              {message}
+              <div
+                className="absolute -bottom-2 left-[70%] h-4 w-4"
+                style={{
+                  background: "rgba(255,252,248,0.96)",
+                  borderRight: "1.5px solid #E5D1C3",
+                  borderBottom: "1.5px solid #E5D1C3",
+                  transform: "translateX(-50%) rotate(45deg)",
+                }}
+              />
+            </div>
           </div>
-        </div>
+        </>
+      )}
 
-        {/* 러그 */}
-        <div
-          className="absolute left-1/2 bottom-[13%] z-[2] h-20 w-[78%] -translate-x-1/2 rounded-[999px]"
-          style={{
-            background:
-              "radial-gradient(ellipse, #FFF8EE 0%, #F7E9D8 58%, rgba(216,174,136,0.36) 100%)",
-            boxShadow: "0 14px 26px rgba(124,82,52,0.12)",
-          }}
-        />
-
-        {/* 해도리 */}
+      {/* 꾸미기 트레이 (접으면 바닥 아래쪽 소품도 옮길 수 있음) */}
+      {editing && !trayOpen && (
         <button
-          onClick={changeMessage}
-          className="absolute left-1/2 top-[52%] z-20 -translate-x-1/2 -translate-y-1/2 active:scale-95 transition-all"
-          style={{
-            border: "none",
-            background: "transparent",
-            padding: 0,
-          }}
-          aria-label="해도리 말 걸기"
+          onClick={() => setTrayOpen(true)}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute bottom-4 left-1/2 z-[70] -translate-x-1/2 rounded-full px-4 py-2 text-xs font-extrabold"
+          style={{ background: "rgba(61,53,48,0.78)", color: "#FFF7EF", boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}
         >
-          <img
-            src="/images/haedori-body.png"
-            alt="해도리"
-            className="h-52 w-52 object-contain drop-shadow-xl"
-          />
+          소품 목록 ▲
         </button>
-
-        {/* 해도리 그림자 */}
+      )}
+      {editing && trayOpen && (
         <div
-          className="absolute left-1/2 bottom-[22%] z-[3] h-7 w-[48%] -translate-x-1/2 rounded-full"
-          style={{
-            background:
-              "radial-gradient(ellipse, rgba(61,53,48,0.14) 0%, rgba(61,53,48,0.06) 48%, rgba(61,53,48,0) 74%)",
-          }}
-        />
-      </div>
+          className="absolute bottom-0 left-0 right-0 z-[70] rounded-t-3xl px-4 pb-6 pt-3"
+          style={{ background: "rgba(255,252,248,0.97)", boxShadow: "0 -6px 24px rgba(61,53,48,0.12)" }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setTrayOpen(false)}
+            className="mx-auto mb-1 flex w-full items-center justify-center py-1"
+            aria-label="소품 목록 접기"
+          >
+            <span className="text-[10px] font-bold" style={{ color: "#B8ACA3" }}>
+              접기 ▼
+            </span>
+          </button>
+          {ownedItems.length === 0 ? (
+            <div className="py-3 text-center">
+              <p className="text-sm font-bold" style={{ color: "#6B6059" }}>
+                아직 가진 소품이 없어요
+              </p>
+              <button
+                onClick={() => router.push("/shop?tab=items")}
+                className="mt-3 rounded-2xl px-4 py-2 text-xs font-extrabold"
+                style={{ background: "#C9856A", color: "#FFFCF8" }}
+              >
+                소품 사러 가기
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="mb-2 text-[11px]" style={{ color: "#9A8F87" }}>
+                눌러서 놓고, 끌어서 옮겨요. 선택한 소품의 ✕로 치울 수 있어요.
+              </p>
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                {ownedItems.map((item) => {
+                  const placed = draft.some((p) => p.item_key === item.key)
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => togglePlace(item.key)}
+                      className="relative flex w-[72px] flex-shrink-0 flex-col items-center gap-1 rounded-2xl p-2"
+                      style={{
+                        background: placed ? "#F3EEE8" : "#FFFFFF",
+                        border: selectedKey === item.key ? "2px solid #C9856A" : "1.5px solid #E5DDD5",
+                      }}
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center">
+                        <RoomItemArt item={item} className="max-h-11 max-w-11" />
+                      </div>
+                      <span className="w-full truncate text-center text-[10px] font-bold" style={{ color: "#6B6059" }}>
+                        {item.name}
+                      </span>
+                      {placed && (
+                        <span
+                          className="absolute right-1 top-1 rounded-full px-1 text-[9px] font-extrabold"
+                          style={{ background: "#D4EACF", color: "#55724F" }}
+                        >
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
