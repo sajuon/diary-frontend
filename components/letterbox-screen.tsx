@@ -3,6 +3,8 @@
 
 import { useMemo, type MouseEvent, useState } from "react"
 import { apiClient } from "@/lib/api"
+import { useLetterPaperKey } from "@/components/letter-paper"
+import { getLetterPaper } from "@/lib/letter-papers"
 
 interface LetterboxScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
@@ -52,6 +54,7 @@ export default function LetterboxScreen({
   onNavigate,
   letters,
 }: LetterboxScreenProps) {
+  const paper = getLetterPaper(useLetterPaperKey())
   const [favoriteMap, setFavoriteMap] = useState<Record<number, boolean>>(
     Object.fromEntries(letters.map((letter) => [letter.id, letter.is_favorite]))
   )
@@ -200,34 +203,36 @@ export default function LetterboxScreen({
               className="w-full text-left transition-all active:scale-[0.98]"
             >
               <div
-                className="flex items-start gap-3 px-4 py-4 rounded-2xl"
+                className="relative flex items-start gap-3 overflow-hidden px-4 py-4 rounded-2xl"
                 style={{
-                  background: letter.unread ? "#FFFCF8" : "#FDFAF7",
-                  border: letter.unread
-                    ? "1.5px solid #F2C4A870"
-                    : "1.5px solid #E5DDD5",
-                  boxShadow: letter.unread
-                    ? "0 3px 12px rgba(201,133,106,0.10)"
-                    : "0 2px 6px rgba(0,0,0,0.04)",
+                  background: paper.background,
+                  border: letter.unread ? "1.5px solid rgba(201,133,106,0.6)" : paper.border,
+                  boxShadow: letter.unread ? "0 3px 12px rgba(201,133,106,0.14)" : paper.shadow,
+                  color: paper.text,
                 }}
               >
+                {paper.pattern && (
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    aria-hidden="true"
+                    style={{
+                      backgroundImage: paper.pattern.image,
+                      backgroundSize: paper.pattern.size,
+                    }}
+                  />
+                )}
                 <div
-                  className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 text-xl"
+                  className="relative w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 text-xl"
                   style={{ background: "#EDE8E0" }}
                   aria-hidden="true"
                 >
                   🦦
                 </div>
 
-                <div className="flex-1 min-w-0">
+                <div className="relative flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <span
-                        className="text-xs font-bold"
-                        style={{ color: "#3D3530" }}
-                      >
-                        해도리
-                      </span>
+                      <span className="text-xs font-bold">해도리</span>
                       {letter.unread && (
                         <div
                           className="w-1.5 h-1.5 rounded-full"
@@ -235,7 +240,7 @@ export default function LetterboxScreen({
                         />
                       )}
                     </div>
-                    <span className="text-xs" style={{ color: "#C4B8B0" }}>
+                    <span className="text-xs" style={{ opacity: 0.55 }}>
                       {letter.date}
                     </span>
                   </div>
@@ -243,7 +248,7 @@ export default function LetterboxScreen({
                   <p
                     className="text-xs leading-relaxed"
                     style={{
-                      color: "#6B6059",
+                      opacity: 0.8,
                       display: "-webkit-box",
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: "vertical",
@@ -254,7 +259,7 @@ export default function LetterboxScreen({
                   </p>
                 </div>
 
-                <div className="flex flex-col items-center gap-2 flex-shrink-0 self-center ml-1">
+                <div className="relative flex flex-col items-center gap-2 flex-shrink-0 self-center ml-1">
                   <span
                     onClick={(e) => void toggleStar(letter.id, e)}
                     className="w-7 h-7 flex items-center justify-center rounded-full transition-all active:scale-90 cursor-pointer"
