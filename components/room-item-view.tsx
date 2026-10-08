@@ -20,6 +20,14 @@ export function RoomItemArt({ item, className }: { item: RoomItemDef; className?
   )
 }
 
+// 크기 조절 점 4개. 어느 점을 끌어도 소품 가운데 기준으로 커지고 작아진다
+const RESIZE_CORNERS = [
+  { key: "tl", label: "왼쪽 위", pos: { left: 0, top: 0 }, cursor: "nwse-resize" },
+  { key: "tr", label: "오른쪽 위", pos: { left: "100%", top: 0 }, cursor: "nesw-resize" },
+  { key: "bl", label: "왼쪽 아래", pos: { left: 0, top: "100%" }, cursor: "nesw-resize" },
+  { key: "br", label: "오른쪽 아래", pos: { left: "100%", top: "100%" }, cursor: "nwse-resize" },
+] as const
+
 /** 방 안에 놓인 소품 */
 export default function RoomItemView({
   item,
@@ -62,9 +70,10 @@ export default function RoomItemView({
       <div
         className="relative"
         style={{
-          outline: selected ? "2px dashed #C9856A" : editing ? "1px dashed rgba(201,133,106,0.45)" : "none",
-          outlineOffset: 4,
-          borderRadius: 8,
+          // 선택하면 캔바처럼 테두리 상자 + 네 모서리 점
+          outline: selected ? "1.5px solid #C9856A" : editing ? "1px dashed rgba(201,133,106,0.45)" : "none",
+          outlineOffset: 0,
+          borderRadius: 2,
           filter: isWall ? undefined : "drop-shadow(0 6px 6px rgba(61,53,48,0.12))",
         }}
       >
@@ -78,36 +87,46 @@ export default function RoomItemView({
               e.stopPropagation()
               onRemove()
             }}
-            className="absolute right-0 top-0 flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold"
-            style={{ background: "#3D3530", color: "#FFFCF8", boxShadow: "0 2px 6px rgba(0,0,0,0.2)" }}
+            className="absolute left-1/2 flex h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[11px] font-extrabold"
+            style={{
+              top: -38,
+              transform: "translateX(-50%)",
+              background: "#3D3530",
+              color: "#FFFCF8",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            }}
             aria-label={`${item.name} 치우기`}
           >
-            ✕
+            ✕ 치우기
           </button>
         )}
 
-        {selected && onResizeStart && (
-          <div
-            role="button"
-            aria-label={`${item.name} 크기 조절`}
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              onResizeStart(e)
-            }}
-            className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full"
-            style={{
-              background: "#C9856A",
-              color: "#FFFCF8",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-              touchAction: "none",
-              cursor: "nwse-resize",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
-              <path d="M7 17L17 7M17 7h-6M17 7v6M7 17h6M7 17v-6" />
-            </svg>
-          </div>
-        )}
+        {selected &&
+          onResizeStart &&
+          RESIZE_CORNERS.map((corner) => (
+            <div
+              key={corner.key}
+              role="button"
+              aria-label={`${item.name} 크기 조절 (${corner.label})`}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                onResizeStart(e)
+              }}
+              className="absolute flex h-7 w-7 items-center justify-center"
+              style={{
+                ...corner.pos,
+                transform: "translate(-50%, -50%)",
+                touchAction: "none",
+                cursor: corner.cursor,
+              }}
+            >
+              {/* 보이는 점은 작게, 누르는 영역은 넉넉하게 */}
+              <span
+                className="block h-3.5 w-3.5 rounded-full"
+                style={{ background: "#FFFFFF", border: "2px solid #C9856A", boxShadow: "0 1px 3px rgba(0,0,0,0.25)" }}
+              />
+            </div>
+          ))}
       </div>
     </div>
   )
