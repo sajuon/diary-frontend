@@ -45,9 +45,11 @@ export function placedWidth(item: RoomItemDef, p: Placement): number {
 
 // 방 화면 안에서 소품을 놓을 수 있는 범위 (%)
 // 벽 소품: 중심 기준 / 바닥 소품: 바닥에 닿는 아래 중앙 기준
+// 위아래로 자유롭게 옮길 수 있게 넓게 잡는다 (예: 화분을 벽 선반 위에 올리기, 책장을 벽 쪽으로 올리기).
+// 화면 밖으로만 안 나가게 막는다. 겹침 순서는 zIndexFor 규칙(아래에 있을수록 앞)을 그대로 따른다.
 export const ZONE_BOUNDS: Record<RoomItemZone, { minY: number; maxY: number }> = {
-  wall: { minY: 18, maxY: 62 },
-  floor: { minY: 74, maxY: 99 },
+  wall: { minY: 12, maxY: 92 },
+  floor: { minY: 30, maxY: 99 },
 }
 
 /** 처음 놓을 때 기본 위치 */
