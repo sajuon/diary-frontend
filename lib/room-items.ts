@@ -20,16 +20,16 @@ export type RoomItemDef = {
 }
 
 export const ROOM_ITEMS: Record<string, RoomItemDef> = {
-  wall_clock: { key: "wall_clock", name: "벽시계", zone: "wall", width: 20 },
-  heart_frame: { key: "heart_frame", name: "하트 액자", zone: "wall", width: 15 },
-  round_window: { key: "round_window", name: "동그란 창문", zone: "wall", width: 30 },
-  calendar: { key: "calendar", name: "달력", zone: "wall", width: 15 },
-  wall_shelf: { key: "wall_shelf", name: "벽 선반", zone: "wall", width: 30 },
-  plant: { key: "plant", name: "화분", zone: "floor", width: 18 },
-  floor_lamp: { key: "floor_lamp", name: "스탠드 조명", zone: "floor", width: 16 },
-  bookshelf: { key: "bookshelf", name: "책장", zone: "floor", width: 28 },
-  cushion: { key: "cushion", name: "쿠션", zone: "floor", width: 24 },
-  rug: { key: "rug", name: "러그", zone: "floor", width: 72, layer: "under" },
+  wall_clock: { key: "wall_clock", name: "벽시계", zone: "wall", width: 20, image: "/room-items/wall_clock.png", aspect: 0.996 },
+  heart_frame: { key: "heart_frame", name: "하트 액자", zone: "wall", width: 15, image: "/room-items/heart_frame.png", aspect: 1.399 },
+  round_window: { key: "round_window", name: "동그란 창문", zone: "wall", width: 30, image: "/room-items/round_window.png", aspect: 0.994 },
+  calendar: { key: "calendar", name: "달력", zone: "wall", width: 15, image: "/room-items/calendar.png", aspect: 1.174 },
+  wall_shelf: { key: "wall_shelf", name: "벽 선반", zone: "wall", width: 30, image: "/room-items/wall_shelf.png", aspect: 0.594 },
+  plant: { key: "plant", name: "화분", zone: "floor", width: 15, image: "/room-items/plant.png", aspect: 1.185 },
+  floor_lamp: { key: "floor_lamp", name: "스탠드 조명", zone: "floor", width: 13, image: "/room-items/floor_lamp.png", aspect: 2.474 },
+  bookshelf: { key: "bookshelf", name: "책장", zone: "floor", width: 26, image: "/room-items/bookshelf.png", aspect: 1.505 },
+  cushion: { key: "cushion", name: "쿠션", zone: "floor", width: 24, image: "/room-items/cushion.png", aspect: 0.640 },
+  rug: { key: "rug", name: "러그", zone: "floor", width: 72, layer: "under", image: "/room-items/rug.png", aspect: 0.531 },
 }
 
 export type Placement = { item_key: string; x: number; y: number }

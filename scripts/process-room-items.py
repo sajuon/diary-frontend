@@ -42,7 +42,7 @@ BODY_IMAGE = ROOT / "public" / "images" / "haedori-body.png"
 STANDING_POSES = {"stand", "look", "read", "water"}
 POSE_OUT_SCALE = 0.5  # 기본 해도리 캔버스(1024x1536)의 절반 크기로 저장
 
-MAX_SIDE = 600
+MAX_SIDE = 480  # 폰 화면(3배 해상도)에서 소품 최대 크기 기준으로 충분
 PADDING = 6          # 자른 뒤 남길 여백(px)
 BG_TOLERANCE = 38    # 배경색과 이 정도까지 비슷하면 배경으로 본다 (0~441)
 EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -141,6 +141,31 @@ def remove_background(im: Image.Image) -> Image.Image:
                 visited[ny, nx] = True
                 q.append((ny, nx))
 
+    # 가장자리와 안 이어진 배경(예: 액자 끈과 액자 사이 삼각형)도 지운다.
+    # 배경색과 거의 같은(아주 가까운) 픽셀 덩어리 중 큰 것만 → 그림 안의 크림색은 남는다
+    strict = np.sqrt(((rgb - bg) ** 2).sum(-1)) <= 8
+    enclosed = strict & ~visited
+    if enclosed.any():
+        seen = np.zeros((h, w), bool)
+        min_size = int(h * w * 0.002)
+        ys, xs = np.nonzero(enclosed)
+        for y0, x0 in zip(ys, xs):
+            if seen[y0, x0]:
+                continue
+            comp = [(y0, x0)]
+            seen[y0, x0] = True
+            i = 0
+            while i < len(comp):
+                y, x = comp[i]
+                i += 1
+                for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                    if 0 <= ny < h and 0 <= nx < w and not seen[ny, nx] and enclosed[ny, nx]:
+                        seen[ny, nx] = True
+                        comp.append((ny, nx))
+            if len(comp) >= min_size:
+                for y, x in comp:
+                    visited[y, x] = True
+
     out = np.asarray(im).copy()
     out[visited, 3] = 0
     return Image.fromarray(out, "RGBA")
@@ -154,6 +179,12 @@ def trim(im: Image.Image) -> Image.Image:
     l, t = max(0, l - PADDING), max(0, t - PADDING)
     r, b = min(im.width, r + PADDING), min(im.height, b + PADDING)
     return im.crop((l, t, r, b))
+
+
+def save_png(im: Image.Image, out: Path) -> None:
+    """256색 팔레트 PNG로 저장 (눈으로는 차이 없고 용량이 1/10 정도)."""
+    q = im.convert("RGBA").quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+    q.save(out, optimize=True)
 
 
 def fit(im: Image.Image) -> Image.Image:
@@ -211,7 +242,7 @@ def process_poses(pose_files: list[Path], poses: set[str], dry: bool) -> None:
             continue
         POSE_DIR.mkdir(parents=True, exist_ok=True)
         out = POSE_DIR / f"{pose}.png"
-        out_im.save(out, optimize=True)
+        save_png(out_im, out)
         register_pose(pose)
         print(f"[ok] pose {pose}: {out.relative_to(ROOT)} {out.stat().st_size // 1024}KB")
 
@@ -243,7 +274,7 @@ def main() -> None:
             print(f"[skip] {f.name}: lib/room-items.ts 에 없는 키예요 (가능: {', '.join(sorted(keys))})")
             continue
         try:
-            im = fit(trim(remove_background(Image.open(f))))
+            im = fit(trim(defringe(remove_background(Image.open(f)))))
         except Exception as e:  # noqa: BLE001
             print(f"[fail] {f.name}: {e}")
             continue
@@ -252,7 +283,7 @@ def main() -> None:
             print(f"[dry-run] {key}: {im.width}x{im.height} (비율 {aspect:.2f})")
             continue
         out = OUT_DIR / f"{key}.png"
-        im.save(out, optimize=True)
+        save_png(im, out)
         register(key, aspect)
         print(f"[ok] {key}: {out.relative_to(ROOT)} {im.width}x{im.height}, {out.stat().st_size // 1024}KB")
 

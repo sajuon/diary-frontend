@@ -37,7 +37,7 @@ Plain pure white background (or transparent). No text, no watermark.
 팁
 - 같은 대화(세션)에서 연달아 뽑으면 그림체가 더 잘 맞는다.
 - 외곽선 두께가 소품마다 다르면 어색하다. 기준 그림과 나란히 놓고 비교해서 고른다.
-- 해상도는 1024px 정도면 충분하다 (스크립트가 600px로 줄인다).
+- 해상도는 1024px 정도면 충분하다 (스크립트가 480px로 줄인다).
 
 ## 3. 앱에 넣기
 
@@ -51,7 +51,7 @@ Plain pure white background (or transparent). No text, no watermark.
    ```
 3. 스크립트가 하는 일
    - 배경 제거 (흰 배경은 가장자리부터 이어진 부분만 지워서, 그림 안의 흰색은 남김)
-   - 여백 자르기, 긴 변 600px로 줄이기
+   - 여백 자르기, 긴 변 480px로 줄이기
    - `public/room-items/<키>.png` 저장
    - `lib/room-items.ts` 해당 소품 줄에 `image`, `aspect` 자동 추가 (다시 돌리면 덮어씀)
 4. 크기가 어색하면 `lib/room-items.ts`에서 그 소품의 `width`(방 너비 대비 %)만 조정한다.
