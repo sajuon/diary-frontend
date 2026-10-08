@@ -6,7 +6,9 @@ import type { PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
 import RoomBackground from "@/components/room-background"
 import RoomItemView, { RoomItemArt } from "@/components/room-item-view"
-import { apiClient } from "@/lib/api"
+import { FeedSheet, PersonalityCardSheet } from "@/components/haedori-personality"
+import { apiClient, type FeedSnackResult, type HaedoriState } from "@/lib/api"
+import { TRAIT_STYLE } from "@/lib/haedori-personality"
 import {
   ROOM_ITEMS,
   clampPlacement,
@@ -39,6 +41,8 @@ const menuItems = [
 
 type DragState = { key: string; pointerId: number; dx: number; dy: number }
 
+type FeedEffect = { id: number; gained: FeedSnackResult["fed"]["gained"] }
+
 export default function HaedoriPage() {
   const router = useRouter()
   const roomRef = useRef<HTMLDivElement>(null)
@@ -58,6 +62,13 @@ export default function HaedoriPage() {
   const [trayOpen, setTrayOpen] = useState(true)
   const dragRef = useRef<DragState | null>(null)
 
+  // 성격 + 간식
+  const [haedori, setHaedori] = useState<HaedoriState | null>(null)
+  const [cardOpen, setCardOpen] = useState(false)
+  const [feedOpen, setFeedOpen] = useState(false)
+  const [feedingKey, setFeedingKey] = useState<string | null>(null)
+  const [feedEffect, setFeedEffect] = useState<FeedEffect | null>(null)
+
   useEffect(() => {
     // 캐시로 먼저 그리고, 서버 값으로 맞춘다
     setThemeKey(readCachedThemeKey())
@@ -75,7 +86,41 @@ export default function HaedoriPage() {
         }
       })
       .catch((err) => console.warn("Failed to load room:", err))
+
+    apiClient
+      .getHaedori()
+      .then((state) => {
+        setHaedori(state)
+        // 상점에서 간식을 사고 '주기'로 들어온 경우 바로 간식 시트
+        if (new URLSearchParams(window.location.search).get("feed")) setFeedOpen(true)
+      })
+      .catch((err) => console.warn("Failed to load haedori:", err))
   }, [])
+
+  const feed = async (snackKey: string) => {
+    try {
+      setFeedingKey(snackKey)
+      const result = await apiClient.feedSnack(snackKey)
+      setHaedori(result)
+      setFeedOpen(false)
+      setMessage(
+        result.fed.type_changed
+          ? `${result.fed.reaction}\n(해도리가 '${result.personality.type.name}'가 됐어!)`
+          : result.fed.reaction
+      )
+      setFeedEffect({ id: Date.now(), gained: result.fed.gained })
+    } catch (error: any) {
+      alert(error?.message || "간식을 주지 못했어요.")
+    } finally {
+      setFeedingKey(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!feedEffect) return
+    const timer = setTimeout(() => setFeedEffect(null), 1800)
+    return () => clearTimeout(timer)
+  }, [feedEffect])
 
   const changeMessage = () => {
     const candidates = messages.filter((m) => m !== message)
@@ -292,7 +337,7 @@ export default function HaedoriPage() {
           {/* 말풍선 */}
           <div className="absolute left-[8%] top-[13%] z-[55] w-[62%] max-w-[260px]">
             <div
-              className="relative rounded-[28px] px-5 py-4 text-center text-sm font-extrabold leading-6"
+              className="relative whitespace-pre-line rounded-[28px] px-5 py-4 text-center text-sm font-extrabold leading-6"
               style={{
                 background: "rgba(255,252,248,0.96)",
                 color: "#3D3530",
@@ -312,7 +357,70 @@ export default function HaedoriPage() {
               />
             </div>
           </div>
+
+          {/* 간식 먹은 효과: 해도리 머리 위로 떠오름 */}
+          {feedEffect && (
+            <div
+              key={feedEffect.id}
+              className="haedori-feed-pop pointer-events-none absolute bottom-[calc(12%+12rem)] left-1/2 z-[56] flex flex-col items-center gap-1"
+            >
+              {feedEffect.gained.map((g) => (
+                <span
+                  key={g.trait}
+                  className="whitespace-nowrap rounded-full px-3 py-1 text-xs font-extrabold shadow"
+                  style={{ background: TRAIT_STYLE[g.trait].bg, color: TRAIT_STYLE[g.trait].color }}
+                >
+                  {g.emoji} {g.name} +{g.amount}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* 아래: 성격 카드 + 간식 주기 */}
+          <div className="absolute bottom-4 left-4 right-4 z-[60] flex items-center gap-2">
+            <button
+              onClick={() => haedori && setCardOpen(true)}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl px-3.5 py-2.5 text-left transition-all active:scale-[0.98]"
+              style={{
+                background: "rgba(255,252,248,0.94)",
+                border: "1.5px solid #E5D1C3",
+                boxShadow: "0 4px 12px rgba(61,53,48,0.08)",
+              }}
+              aria-label="해도리 성격 보기"
+            >
+              <span className="text-xl">{haedori?.personality.type.emoji ?? "🦦"}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] font-bold" style={{ color: "#9A8F87" }}>
+                  해도리 성격
+                </span>
+                <span className="block text-[13px] font-extrabold leading-tight" style={{ color: "#3D3530", wordBreak: "keep-all" }}>
+                  {haedori?.personality.type.name ?? "불러오는 중"}
+                </span>
+              </span>
+              <span className="text-sm" style={{ color: "#B8ACA3" }}>
+                ›
+              </span>
+            </button>
+            <button
+              onClick={() => haedori && setFeedOpen(true)}
+              className="flex h-[54px] flex-shrink-0 items-center gap-1 rounded-2xl px-4 text-sm font-extrabold transition-all active:scale-95"
+              style={{ background: "#C9856A", color: "#FFFCF8", boxShadow: "0 4px 12px rgba(201,133,106,0.3)" }}
+            >
+              🍪 간식 주기
+            </button>
+          </div>
         </>
+      )}
+
+      {cardOpen && haedori && <PersonalityCardSheet state={haedori} onClose={() => setCardOpen(false)} />}
+      {feedOpen && haedori && (
+        <FeedSheet
+          state={haedori}
+          feedingKey={feedingKey}
+          onFeed={feed}
+          onGoShop={() => router.push("/shop?tab=food")}
+          onClose={() => setFeedOpen(false)}
+        />
       )}
 
       {/* 꾸미기 트레이 (접으면 바닥 아래쪽 소품도 옮길 수 있음) */}

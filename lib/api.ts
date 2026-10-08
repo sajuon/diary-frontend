@@ -21,6 +21,46 @@ export type RoomState = {
   placements: Array<{ item_key: string; x: number; y: number }>
 }
 
+// ===== 해도리 성격 + 간식 =====
+export type HaedoriTrait = "cheer" | "listen" | "playful" | "advice"
+
+export type HaedoriSnack = {
+  key: string
+  name: string
+  emoji: string
+  price: number
+  effects: Partial<Record<HaedoriTrait, number>>
+  story: string
+  count: number
+}
+
+export type HaedoriState = {
+  personality: {
+    scores: Record<HaedoriTrait, number>
+    fed_count: number
+    type: {
+      key: string
+      name: string
+      emoji: string
+      description: string
+      primary: HaedoriTrait | null
+      secondary: HaedoriTrait | null
+    }
+    traits: Array<{ key: HaedoriTrait; name: string; emoji: string; description: string }>
+  }
+  snacks: HaedoriSnack[]
+}
+
+export type FeedSnackResult = HaedoriState & {
+  fed: {
+    snack_key: string
+    reaction: string
+    gained: Array<{ trait: HaedoriTrait; name: string; emoji: string; amount: number }>
+    type_changed: boolean
+    previous_type_name: string
+  }
+}
+
 export type LetterFeedback = {
   letter_id: number
   rating: "like" | "dislike"
@@ -532,6 +572,20 @@ class ApiClient {
     return this.put<RoomState>("/api/room/letter-paper", {
       letter_paper_key: letterPaperKey,
     })
+  }
+
+  async getHaedori() {
+    return this.get<HaedoriState>("/api/haedori")
+  }
+
+  async buySnack(snackKey: string, quantity = 1) {
+    return this.post<HaedoriState & { balance: number }>(`/api/haedori/snacks/${snackKey}/buy`, {
+      quantity,
+    })
+  }
+
+  async feedSnack(snackKey: string) {
+    return this.post<FeedSnackResult>(`/api/haedori/snacks/${snackKey}/feed`)
   }
 
   async getShopItems(itemType?: string) {

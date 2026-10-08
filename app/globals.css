@@ -122,3 +122,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* 해도리 간식 효과: 머리 위로 떠올랐다 사라짐 */
+@keyframes haedori-feed-pop {
+  0% { opacity: 0; transform: translate(-50%, 12px) scale(0.9); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  75% { opacity: 1; transform: translate(-50%, -18px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -30px) scale(1); }
+}
+.haedori-feed-pop {
+  animation: haedori-feed-pop 1.8s ease-out forwards;
+}
