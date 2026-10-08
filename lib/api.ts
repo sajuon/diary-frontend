@@ -443,6 +443,13 @@ class ApiClient {
     return this.patch(`/api/letters/${letterId}/read`)
   }
 
+  async updateLetterFavorite(letterId: number, isFavorite: boolean) {
+    return this.patch<{ id: number; is_favorite: boolean }>(
+      `/api/letters/${letterId}/favorite`,
+      { is_favorite: isFavorite }
+    )
+  }
+
   async generateLetterForDiary(targetDate: string) {
     const params = new URLSearchParams()
     params.set("target_date", targetDate)

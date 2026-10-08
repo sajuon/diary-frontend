@@ -4,6 +4,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { apiClient, type LetterFeedback } from "@/lib/api"
 import { handlePearlReward } from "@/lib/pearl-events"
+import {
+  EMOTION_MAP,
+  EmotionStone,
+  FALLBACK_EMOTION,
+  isEmotionKey,
+} from "@/components/emotion-stone"
 
 type DiaryType = "question" | "free"
 
@@ -32,6 +38,7 @@ interface LetterResponse {
   model?: string | null
   is_read?: boolean
   read_at?: string | null
+  is_favorite?: boolean
   created_at: string
   updated_at: string
 }
@@ -54,21 +61,6 @@ interface DiaryDetailScreenProps {
   letterGenerating?: boolean
 }
 
-const moodMeta: Record<string, { label: string; color: string; icon: string }> = {
-  happy: { label: "happy", color: "#F4C97A", icon: "😊" },
-  calm: { label: "calm", color: "#A8BBA5", icon: "😌" },
-  sad: { label: "sad", color: "#A8C4D4", icon: "😢" },
-  angry: { label: "angry", color: "#F2A8A8", icon: "😤" },
-  tired: { label: "tired", color: "#C4B8C4", icon: "😪" },
-  excited: { label: "excited", color: "#F2C4A8", icon: "🥰" },
-}
-
-const defaultMoodMeta = {
-  label: "calm",
-  color: "#A8BBA5",
-  icon: "😌",
-}
-
 function getKstTodayDateString() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -86,7 +78,28 @@ export default function DiaryDetailScreen({
   onGenerateLetterWithPearl,
   letterGenerating = false,
 }: DiaryDetailScreenProps) {
-  const [starred, setStarred] = useState(false)
+  const [starred, setStarred] = useState(Boolean(letter?.is_favorite))
+  const [starSaving, setStarSaving] = useState(false)
+
+  useEffect(() => {
+    setStarred(Boolean(letter?.is_favorite))
+  }, [letter?.id, letter?.is_favorite])
+
+  const handleToggleStar = async () => {
+    if (!letter?.id || starSaving) return
+    const next = !starred
+    setStarred(next)
+    try {
+      setStarSaving(true)
+      const updated = await apiClient.updateLetterFavorite(letter.id, next)
+      setStarred(Boolean(updated?.is_favorite))
+    } catch (err) {
+      console.error("Failed to update favorite:", err)
+      setStarred(!next)
+    } finally {
+      setStarSaving(false)
+    }
+  }
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
   const [feedbackComment, setFeedbackComment] = useState("")
   const [sentFeedback, setSentFeedback] = useState<LetterFeedback | null>(null)
@@ -142,7 +155,10 @@ export default function DiaryDetailScreen({
   }
 
   const moodId = diary.mood_tags?.[0] || "calm"
-  const currentMood = useMemo(() => moodMeta[moodId] || defaultMoodMeta, [moodId])
+  const currentMood = useMemo(
+    () => EMOTION_MAP[isEmotionKey(moodId) ? moodId : FALLBACK_EMOTION],
+    [moodId]
+  )
 
   const isQuestionDiary =
     diary.diary_type === "question" || Boolean(diary.question_text)
@@ -195,14 +211,7 @@ export default function DiaryDetailScreen({
           </h2>
 
           <div className="mt-0.5 flex items-center justify-center gap-1.5">
-            <span className="text-xs" aria-hidden="true">
-              {currentMood.icon}
-            </span>
-
-            <div
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ background: currentMood.color }}
-            />
+            <EmotionStone emotion={currentMood.key} size={18} />
 
             <span className="text-xs" style={{ color: "#9A8F87" }}>
               {currentMood.label}
@@ -395,7 +404,8 @@ export default function DiaryDetailScreen({
                 }}
               >
                 <button
-                  onClick={() => setStarred((s) => !s)}
+                  onClick={handleToggleStar}
+                  disabled={starSaving}
                   className="mb-4 flex w-full items-center gap-3 transition-all active:scale-[0.97]"
                   aria-label={starred ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
                   type="button"
