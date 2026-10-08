@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import CustomizationShop from "@/components/customization-shop"
 import { useUserPearls } from "@/hooks/use-user-pearls"
+import { goBack } from "@/lib/navigation"
 
 export default function LetterShopPage() {
   const router = useRouter()
@@ -12,7 +13,7 @@ export default function LetterShopPage() {
     <div className="min-h-screen px-5 pt-12 pb-28" style={{ background: "#F8F6F2" }}>
       <div className="mb-6 flex items-center justify-between">
         <button
-          onClick={() => router.push("/haedori")}
+          onClick={() => goBack(router, "/haedori")}
           className="flex h-9 w-9 items-center justify-center rounded-full transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           type="button"

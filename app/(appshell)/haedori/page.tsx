@@ -117,7 +117,7 @@ export default function HaedoriPage() {
       {/* 헤더 */}
       <div className="relative z-20 flex items-center justify-between">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push("/home")}
           className="flex h-11 w-11 items-center justify-center rounded-full text-lg active:scale-95 transition-all"
           style={{
             background: "rgba(255,255,255,0.88)",

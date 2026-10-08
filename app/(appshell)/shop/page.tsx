@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import ShopScreen from "@/components/shop-screen"
 import { apiClient } from "@/lib/api"
+import { goBack } from "@/lib/navigation"
 
 export default function ShopPage() {
   const router = useRouter()
@@ -26,7 +27,9 @@ export default function ShopPage() {
   }, [])
 
   const navigate = (screen: string, params?: Record<string, unknown>) => {
-    if (screen === "diary-detail" && params?.date) {
+    if (screen === "back") {
+      goBack(router, "/home")
+    } else if (screen === "diary-detail" && params?.date) {
       router.push(`/diary-detail/${params.date}`)
     } else if (screen === "letter-detail" && params?.letter) {
       const letterId = (params.letter as any).id || params.letter

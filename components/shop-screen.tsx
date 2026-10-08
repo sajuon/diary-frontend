@@ -260,7 +260,7 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
     <div className="flex flex-col h-full" style={{ background: "#F8F6F2" }}>
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <button
-          onClick={() => onNavigate("home")}
+          onClick={() => onNavigate("back")}
           className="w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-95"
           style={{ background: "#FFFCF8", border: "1.5px solid #E5DDD5" }}
           aria-label="뒤로 가기"
