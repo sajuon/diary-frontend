@@ -8,7 +8,7 @@ import RoomBackground from "@/components/room-background"
 import RoomItemView, { RoomItemArt } from "@/components/room-item-view"
 import { FeedSheet, PersonalityCardSheet } from "@/components/haedori-personality"
 import { apiClient, type FeedSnackResult, type HaedoriState } from "@/lib/api"
-import { TRAIT_STYLE } from "@/lib/haedori-personality"
+import { NEUTRAL_LINES, TRAIT_STYLE, linesFor } from "@/lib/haedori-personality"
 import {
   ROOM_ITEMS,
   clampPlacement,
@@ -21,17 +21,6 @@ import {
   readCachedThemeKey,
   writeCachedThemeKey,
 } from "@/lib/room-themes"
-
-const messages = [
-  "오늘도 와줘서 고마워!",
-  "간식 먹으면 더 힘낼 수 있어!",
-  "오늘 하루는 어땠어?",
-  "해도리가 네 이야기를 기다리고 있어.",
-  "무리하지 말고 천천히 가도 돼.",
-  "오늘도 여기까지 온 것만으로 충분해.",
-  "해도리는 항상 네 편이야.",
-  "마음이 복잡하면 천천히 말해줘.",
-]
 
 const menuItems = [
   { label: "해도리 상점", image: "/images/icons/snackmarket.png", path: "/shop" },
@@ -47,7 +36,7 @@ export default function HaedoriPage() {
   const router = useRouter()
   const roomRef = useRef<HTMLDivElement>(null)
 
-  const [message, setMessage] = useState(messages[2])
+  const [message, setMessage] = useState(NEUTRAL_LINES[0])
   const [themeKey, setThemeKey] = useState(DEFAULT_THEME_KEY)
   const theme = getRoomTheme(themeKey)
 
@@ -91,6 +80,8 @@ export default function HaedoriPage() {
       .getHaedori()
       .then((state) => {
         setHaedori(state)
+        const lines = linesFor(state.personality.type.primary, state.personality.type.secondary)
+        setMessage(lines[Math.floor(Math.random() * lines.length)])
         // 상점에서 간식을 사고 '주기'로 들어온 경우 바로 간식 시트
         if (new URLSearchParams(window.location.search).get("feed")) setFeedOpen(true)
       })
@@ -123,7 +114,10 @@ export default function HaedoriPage() {
   }, [feedEffect])
 
   const changeMessage = () => {
-    const candidates = messages.filter((m) => m !== message)
+    // 해도리 성격에 맞는 말풍선
+    const type = haedori?.personality.type
+    const lines = linesFor(type?.primary ?? null, type?.secondary ?? null)
+    const candidates = lines.filter((m) => m !== message)
     setMessage(candidates[Math.floor(Math.random() * candidates.length)])
   }
 
@@ -212,7 +206,7 @@ export default function HaedoriPage() {
   return (
     <div
       ref={roomRef}
-      className="relative h-[100dvh] overflow-hidden px-5 pt-5 pb-0"
+      className="relative h-[100dvh] max-h-full overflow-hidden px-5 pt-5 pb-0"
       style={{ background: theme.base }}
       onPointerMove={editing ? handlePointerMove : undefined}
       onPointerUp={editing ? handlePointerUp : undefined}

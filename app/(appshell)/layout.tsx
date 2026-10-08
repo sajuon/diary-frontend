@@ -142,9 +142,10 @@ export default function AppShellLayout({
             boxShadow: "0 24px 48px rgba(61,53,48,0.16)",
           }}
         >
+          {/* transform이 있으면 안쪽 position:fixed 모달이 화면 전체가 아니라 이 폰 프레임 기준으로 뜬다 */}
           <div
             className="h-full overflow-hidden"
-            style={{ background: "#F8F6F2" }}
+            style={{ background: "#F8F6F2", transform: "translateZ(0)" }}
           >
             {children}
           </div>

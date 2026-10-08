@@ -9,7 +9,7 @@ import { SnackEffectChips } from "@/components/snack-shop"
 
 function BottomSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="absolute inset-0 z-[80] flex items-end justify-center" onPointerDown={(e) => e.stopPropagation()}>
       <button
         type="button"
         className="absolute inset-0"
@@ -18,7 +18,7 @@ function BottomSheet({ onClose, children }: { onClose: () => void; children: Rea
         style={{ background: "rgba(0,0,0,0.35)" }}
       />
       <div
-        className="relative mx-auto max-h-[80dvh] w-full max-w-md overflow-y-auto rounded-t-3xl px-5 pb-7 pt-5"
+        className="relative mx-auto max-h-[80%] w-full max-w-md overflow-y-auto rounded-t-3xl px-5 pb-7 pt-5"
         style={{ background: "#FFFCF8" }}
       >
         {children}
