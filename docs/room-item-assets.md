@@ -68,3 +68,37 @@ Plain pure white background (or transparent). No text, no watermark.
    VALUES ('이름', '설명', 100, 'room_item', '새키', 1, NOW());
    ```
 3. 위 3번 순서로 그림 넣기
+
+## 5. 해도리 자세 그림 (소품 쓰기)
+
+해도리는 방에 놓인 소품으로 걸어가서 쓴다 (`lib/haedori-actions.ts`).
+자세 그림이 없으면 기본 해도리 그림에 이모지(😌 💤 📖 …)만 띄운다. 그림을 넣으면 그 자세로 바뀐다.
+
+기준 그림: `public/images/haedori-body.png` (정면 해도리). 이 그림을 참고 이미지로 같이 넣는다.
+
+```
+The same otter character as the reference image, {POSE}, front view,
+same proportions, same face, same colors and brown outlines, flat 2D illustration,
+full body visible, feet at the bottom of the image, nothing else in the image.
+Plain pure white background (or transparent). No text, no watermark.
+```
+
+| 파일 이름 | 자세 | `{POSE}` 에 넣을 말 | 쓰는 소품 |
+|---|---|---|---|
+| `pose_sit.png` | 앉기 | sitting down comfortably with legs stretched forward | 쿠션 |
+| `pose_lie.png` | 눕기 | lying on its back, relaxed, eyes closed, sleeping | 러그 |
+| `pose_read.png` | 책 읽기 | standing and reading an open book held with both paws | 책장, 스탠드 조명 |
+| `pose_water.png` | 물 주기 | standing and holding a small watering can | 화분 |
+| `pose_look.png` | 올려다보기 | standing and looking up, seen from slightly behind | 벽 소품 |
+
+팁
+- 해도리 얼굴·비율이 기준 그림과 다르면 어색하다. 여러 장 뽑아서 제일 비슷한 걸 고른다.
+- 눕기처럼 옆으로 긴 그림도 괜찮다 (발끝 = 그림 아래쪽 기준으로 놓인다).
+
+넣는 방법은 소품과 같다. `raw-items/` 에 위 파일 이름으로 저장하고 스크립트를 돌린다.
+```bash
+python3 scripts/process-room-items.py raw-items/
+```
+→ `public/images/haedori-poses/<자세>.png` 저장 + `HAEDORI_POSES`에 경로 자동 기록.
+
+새 소품에 동작을 붙이려면 `ITEM_ACTIONS`에 한 줄 추가한다 (자세, 이모지, 대사, 설 자리).

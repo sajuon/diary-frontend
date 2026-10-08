@@ -15,6 +15,9 @@ AI로 뽑은 소품 그림을 앱에서 바로 쓸 수 있게 다듬고 등록�
 
 raw-items/ 안의 파일 이름은 소품 키와 같아야 한다.
   예: wall_clock.png, plant.jpg, rug.webp
+해도리 자세 그림은 pose_<자세>.png 로 넣는다 (lib/haedori-actions.ts 의 HAEDORI_POSES 키).
+  예: pose_sit.png, pose_lie.png, pose_read.png
+  → public/images/haedori-poses/<자세>.png 저장 + HAEDORI_POSES에 image 자동 기록
 필요한 패키지: pip install pillow numpy
 """
 
@@ -31,6 +34,9 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "public" / "room-items"
 CATALOG = ROOT / "lib" / "room-items.ts"
+POSE_DIR = ROOT / "public" / "images" / "haedori-poses"
+POSE_CATALOG = ROOT / "lib" / "haedori-actions.ts"
+POSE_PREFIX = "pose_"
 
 MAX_SIDE = 600
 PADDING = 6          # 자른 뒤 남길 여백(px)
@@ -41,6 +47,25 @@ EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 def known_keys() -> set[str]:
     text = CATALOG.read_text(encoding="utf-8")
     return set(re.findall(r'^\s{2}(\w+): \{ key: "\1"', text, flags=re.M))
+
+
+def known_poses() -> set[str]:
+    text = POSE_CATALOG.read_text(encoding="utf-8")
+    block = text.split("HAEDORI_POSES", 1)[1].split("\n}", 1)[0]
+    return set(re.findall(r"^\s{2}(\w+): \{", block, flags=re.M))
+
+
+def register_pose(name: str) -> None:
+    """lib/haedori-actions.ts 의 HAEDORI_POSES 해당 줄에 image를 넣거나 갱신한다."""
+    text = POSE_CATALOG.read_text(encoding="utf-8")
+    pattern = re.compile(rf"^(\s{{2}}{name}: \{{)(.*?)\}},$", re.M)
+    m = pattern.search(text)
+    if not m:
+        raise ValueError(f"lib/haedori-actions.ts 에서 '{name}' 자세 줄을 못 찾았어요")
+    rest = re.sub(r'\s*image: "[^"]*",?', "", m.group(2)).strip().strip(",").strip()
+    inner = f'image: "/images/haedori-poses/{name}.png"' + (f", {rest}" if rest else "")
+    line = f"{m.group(1)} {inner} }},"
+    POSE_CATALOG.write_text(text[: m.start()] + line + text[m.end():], encoding="utf-8")
 
 
 def remove_background(im: Image.Image) -> Image.Image:
@@ -127,8 +152,28 @@ def main() -> None:
         sys.exit(1)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    poses = known_poses()
     for f in files:
         key = f.stem
+        if key.startswith(POSE_PREFIX):
+            pose = key[len(POSE_PREFIX):]
+            if pose not in poses:
+                print(f"[skip] {f.name}: 없는 자세예요 (가능: {', '.join(sorted(poses))})")
+                continue
+            try:
+                im = fit(trim(remove_background(Image.open(f))))
+            except Exception as e:  # noqa: BLE001
+                print(f"[fail] {f.name}: {e}")
+                continue
+            if dry:
+                print(f"[dry-run] pose {pose}: {im.width}x{im.height}")
+                continue
+            POSE_DIR.mkdir(parents=True, exist_ok=True)
+            out = POSE_DIR / f"{pose}.png"
+            im.save(out, optimize=True)
+            register_pose(pose)
+            print(f"[ok] pose {pose}: {out.relative_to(ROOT)} {im.width}x{im.height}")
+            continue
         if key not in keys:
             print(f"[skip] {f.name}: lib/room-items.ts 에 없는 키예요 (가능: {', '.join(sorted(keys))})")
             continue

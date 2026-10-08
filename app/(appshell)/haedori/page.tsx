@@ -10,6 +10,18 @@ import { FeedSheet, PersonalityCardSheet } from "@/components/haedori-personalit
 import { apiClient, type FeedSnackResult, type HaedoriState } from "@/lib/api"
 import { NEUTRAL_LINES, TRAIT_STYLE, linesFor } from "@/lib/haedori-personality"
 import {
+  HAEDORI_DEFAULT_IMAGE,
+  HAEDORI_POSES,
+  HOME_SPOT,
+  ITEM_ACTIONS,
+  clampSpot,
+  haedoriZIndex,
+  spotForItem,
+  usablePlacements,
+  type HaedoriSpot,
+  type ItemAction,
+} from "@/lib/haedori-actions"
+import {
   ROOM_ITEMS,
   clampPlacement,
   defaultPlacement,
@@ -57,6 +69,14 @@ export default function HaedoriPage() {
   const [feedOpen, setFeedOpen] = useState(false)
   const [feedingKey, setFeedingKey] = useState<string | null>(null)
   const [feedEffect, setFeedEffect] = useState<FeedEffect | null>(null)
+
+  // 해도리 움직임 (소품 쓰기)
+  const [spot, setSpot] = useState<HaedoriSpot>(HOME_SPOT)
+  const [facing, setFacing] = useState<1 | -1>(1)
+  const [walkMs, setWalkMs] = useState(0) // 0이면 서 있음
+  const [action, setAction] = useState<ItemAction | null>(null)
+  const spotRef = useRef<HaedoriSpot>(HOME_SPOT)
+  const arriveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     // 캐시로 먼저 그리고, 서버 값으로 맞춘다
@@ -113,6 +133,77 @@ export default function HaedoriPage() {
     return () => clearTimeout(timer)
   }, [feedEffect])
 
+  // ===== 해도리 움직임 =====
+
+  /** 해도리를 spot으로 걸어가게 한다. 도착하면 action 자세를 취한다. */
+  const walkTo = useCallback((target: HaedoriSpot, nextAction: ItemAction | null, onArrive?: () => void) => {
+    const from = spotRef.current
+    const to = clampSpot(target)
+    const dist = Math.hypot(to.x - from.x, (to.y - from.y) * 1.6)
+    if (arriveTimer.current) clearTimeout(arriveTimer.current)
+    setAction(null)
+
+    if (dist < 1) {
+      setAction(nextAction)
+      onArrive?.()
+      return
+    }
+    const ms = Math.round(Math.min(2600, Math.max(700, dist * 45)))
+    if (Math.abs(to.x - from.x) > 0.5) setFacing(to.x < from.x ? -1 : 1)
+    setWalkMs(ms)
+    setSpot(to)
+    spotRef.current = to
+    arriveTimer.current = setTimeout(() => {
+      setWalkMs(0)
+      setAction(nextAction)
+      onArrive?.()
+    }, ms)
+  }, [])
+
+  const placeHaedoriAtHome = () => {
+    if (arriveTimer.current) clearTimeout(arriveTimer.current)
+    setWalkMs(0)
+    setAction(null)
+    setSpot(HOME_SPOT)
+    spotRef.current = HOME_SPOT
+  }
+
+  const goUseItem = (itemKey: string, fromTap: boolean) => {
+    const item = ROOM_ITEMS[itemKey]
+    const placement = placements.find((p) => p.item_key === itemKey)
+    const itemAction = ITEM_ACTIONS[itemKey]
+    if (!item || !placement || !itemAction) return
+    const target = spotForItem(item, placement)
+    if (!target) return
+    walkTo(target, itemAction, fromTap ? () => setMessage(itemAction.line) : undefined)
+  }
+
+  // 혼자 있을 때: 몇 초마다 소품을 쓰러 가거나 돌아다닌다
+  const paused = editing || cardOpen || feedOpen || walkMs > 0
+  useEffect(() => {
+    if (paused) return
+    const timer = setTimeout(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return
+      const usable = usablePlacements(placements)
+      const roll = Math.random()
+      if (usable.length > 0 && roll < 0.65) {
+        const pick = usable[Math.floor(Math.random() * usable.length)]
+        goUseItem(pick.item_key, false)
+      } else if (roll < 0.85) {
+        walkTo(HOME_SPOT, null)
+      } else {
+        walkTo({ x: 25 + Math.random() * 50, y: 84 + Math.random() * 8 }, null)
+      }
+    }, 7000 + Math.random() * 7000)
+    return () => clearTimeout(timer)
+    // goUseItem은 placements만 바뀌면 다시 만들어지므로 placements로 충분
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused, placements, spot, action, walkTo])
+
+  useEffect(() => () => {
+    if (arriveTimer.current) clearTimeout(arriveTimer.current)
+  }, [])
+
   const changeMessage = () => {
     // 해도리 성격에 맞는 말풍선
     const type = haedori?.personality.type
@@ -124,6 +215,7 @@ export default function HaedoriPage() {
   // ===== 꾸미기 =====
 
   const startEditing = () => {
+    placeHaedoriAtHome()
     setDraft(placements)
     setSelectedKey(null)
     setTrayOpen(true)
@@ -231,25 +323,69 @@ export default function HaedoriPage() {
             selected={editing && selectedKey === p.item_key}
             onPointerDown={handleItemPointerDown(p.item_key)}
             onRemove={() => removeItem(p.item_key)}
+            onTap={!editing && ITEM_ACTIONS[p.item_key] ? () => goUseItem(p.item_key, true) : undefined}
           />
         )
       })}
 
-      {/* 해도리: 바닥 중간쯤에 서 있음. 이보다 아래 놓인 바닥 소품은 해도리 앞에 그려진다 */}
+      {/* 해도리: spot(발끝 위치)에 서 있다가 소품 쪽으로 걸어간다.
+          겹침 순서는 바닥 소품과 같은 규칙이라 아래쪽 소품은 해도리 앞에 그려진다 */}
       <div
-        className="pointer-events-none absolute bottom-[12%] left-1/2 z-[19] h-7 w-[44%] -translate-x-1/2 translate-y-1/2 rounded-full"
+        className="pointer-events-none absolute h-7 w-[44%] rounded-full"
         style={{
+          left: `${spot.x}%`,
+          top: `${spot.y}%`,
+          transform: "translate(-50%, -50%)",
+          zIndex: haedoriZIndex(spot.y) - 1,
+          transition: walkMs ? `left ${walkMs}ms linear, top ${walkMs}ms linear` : undefined,
           background:
             "radial-gradient(ellipse, rgba(61,53,48,0.16) 0%, rgba(61,53,48,0.06) 48%, rgba(61,53,48,0) 74%)",
         }}
       />
       <button
         onClick={changeMessage}
-        className="absolute bottom-[12%] left-1/2 z-20 -translate-x-1/2 transition-all active:scale-95"
-        style={{ border: "none", background: "transparent", padding: 0, pointerEvents: editing ? "none" : "auto" }}
+        className="absolute"
+        style={{
+          left: `${spot.x}%`,
+          top: `${spot.y}%`,
+          transform: "translate(-50%, -100%)",
+          zIndex: haedoriZIndex(spot.y),
+          transition: walkMs ? `left ${walkMs}ms linear, top ${walkMs}ms linear` : undefined,
+          border: "none",
+          background: "transparent",
+          padding: 0,
+          // 그림의 투명한 여백이 옆 소품 누르는 걸 막지 않게, 몸통 부분만 누를 수 있게 한다
+          pointerEvents: "none",
+        }}
         aria-label="해도리 말 걸기"
       >
-        <img src="/images/haedori-body.png" alt="해도리" className="h-48 w-48 object-contain drop-shadow-xl" />
+        {!editing && (
+          <span
+            className="absolute bottom-0 left-1/2 h-[72%] w-[40%] -translate-x-1/2"
+            style={{ pointerEvents: "auto", cursor: "pointer" }}
+          />
+        )}
+        <div className={walkMs ? "haedori-walk" : undefined}>
+          <img
+            src={HAEDORI_POSES[action?.pose ?? "stand"].image ?? HAEDORI_DEFAULT_IMAGE}
+            alt="해도리"
+            draggable={false}
+            className="h-48 w-48 select-none object-contain drop-shadow-xl transition-transform duration-300"
+            style={{
+              transform: `scaleX(${facing}) scale(${HAEDORI_POSES[action?.pose ?? "stand"].scale ?? 1})`,
+              transformOrigin: "50% 100%",
+            }}
+          />
+        </div>
+        {/* 지금 하는 일 표시 (자세 그림이 생기면 없어도 됨) */}
+        {action && !walkMs && (
+          <span
+            className="haedori-action-pop pointer-events-none absolute right-6 top-4 flex h-9 w-9 items-center justify-center rounded-full text-lg"
+            style={{ background: "rgba(255,252,248,0.95)", boxShadow: "0 3px 10px rgba(61,53,48,0.15)" }}
+          >
+            {action.emoji}
+          </span>
+        )}
       </button>
 
       {/* 헤더 */}
@@ -356,7 +492,8 @@ export default function HaedoriPage() {
           {feedEffect && (
             <div
               key={feedEffect.id}
-              className="haedori-feed-pop pointer-events-none absolute bottom-[calc(12%+12rem)] left-1/2 z-[56] flex flex-col items-center gap-1"
+              className="haedori-feed-pop pointer-events-none absolute z-[56] flex flex-col items-center gap-1"
+              style={{ left: `${spot.x}%`, top: `calc(${spot.y}% - 13rem)` }}
             >
               {feedEffect.gained.map((g) => (
                 <span

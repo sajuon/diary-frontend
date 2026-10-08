@@ -133,3 +133,21 @@
 .haedori-feed-pop {
   animation: haedori-feed-pop 1.8s ease-out forwards;
 }
+
+/* 해도리 걷기: 통통 튀면서 이동 (걷기 그림이 생기면 교체) */
+@keyframes haedori-walk {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.haedori-walk {
+  animation: haedori-walk 0.38s ease-in-out infinite;
+}
+
+/* 해도리 동작 표시 이모지 */
+@keyframes haedori-action-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.haedori-action-pop {
+  animation: haedori-action-pop 0.25s ease-out;
+}

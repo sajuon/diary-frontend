@@ -28,6 +28,7 @@ export default function RoomItemView({
   selected = false,
   onPointerDown,
   onRemove,
+  onTap,
 }: {
   item: RoomItemDef
   placement: Placement
@@ -35,6 +36,8 @@ export default function RoomItemView({
   selected?: boolean
   onPointerDown?: (e: ReactPointerEvent<HTMLDivElement>) => void
   onRemove?: () => void
+  /** 꾸미기 중이 아닐 때 소품을 누르면 (해도리가 쓰러 감) */
+  onTap?: () => void
 }) {
   const isWall = item.zone === "wall"
   return (
@@ -47,10 +50,11 @@ export default function RoomItemView({
         transform: isWall ? "translate(-50%, -50%)" : "translate(-50%, -100%)",
         zIndex: zIndexFor(item, placement) + (selected ? 30 : 0),
         touchAction: editing ? "none" : undefined,
-        cursor: editing ? "grab" : undefined,
-        pointerEvents: editing ? "auto" : "none",
+        cursor: editing ? "grab" : onTap ? "pointer" : undefined,
+        pointerEvents: editing || onTap ? "auto" : "none",
       }}
       onPointerDown={editing ? onPointerDown : undefined}
+      onClick={!editing && onTap ? onTap : undefined}
     >
       <div
         className="relative"
