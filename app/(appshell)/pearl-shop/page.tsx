@@ -5,25 +5,22 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import PearlShopScreen from "@/components/pearl-shop-screen"
 import { apiClient } from "@/lib/api"
+import { notifyPearlBalance } from "@/lib/pearl-events"
+import { DEFAULT_THEME_KEY, writeCachedThemeKey } from "@/lib/room-themes"
 
 type ShopItem = {
   id: number
   name?: string
-  title?: string
   description?: string
-  price?: number
-  pearl_price?: number
+  price?: number | string
   item_type?: string
-  image_url?: string
+  item_key?: string | null
   [key: string]: unknown
 }
 
 type UserPurchase = {
   id?: number
   item_id?: number
-  shop_item_id?: number
-  user_id?: number
-  purchased_at?: string
   item?: ShopItem
   [key: string]: unknown
 }
@@ -32,63 +29,69 @@ export default function PearlShopPage() {
   const router = useRouter()
   const [items, setItems] = useState<ShopItem[]>([])
   const [purchases, setPurchases] = useState<UserPurchase[]>([])
+  const [appliedThemeKey, setAppliedThemeKey] = useState(DEFAULT_THEME_KEY)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const loadShopData = async () => {
+    const load = async () => {
       try {
-        const [itemsData, purchasesData] = await Promise.all([
+        const [itemsData, purchasesData, room] = await Promise.all([
           apiClient.getShopItems("theme"),
           apiClient.getUserPurchases(),
+          apiClient.getRoom(),
         ])
-
         setItems(Array.isArray(itemsData) ? (itemsData as ShopItem[]) : [])
-        setPurchases(
-          Array.isArray(purchasesData) ? (purchasesData as UserPurchase[]) : []
-        )
+        setPurchases(Array.isArray(purchasesData) ? (purchasesData as UserPurchase[]) : [])
+        setAppliedThemeKey(room.theme_key)
+        writeCachedThemeKey(room.theme_key)
       } catch (error) {
         console.error("Failed to load pearl shop data:", error)
       } finally {
         setLoading(false)
       }
     }
-
-    loadShopData()
+    load()
   }, [])
 
-  const navigate = (screen: string, params?: Record<string, unknown>) => {
-    if (screen === "diary-detail" && params?.date) {
-      router.push(`/diary-detail/${params.date}`)
-      return
-    }
-
-    if (screen === "letter-detail" && params?.letter) {
-      const letterParam = params.letter as { id?: number | string } | number | string
-      const letterId =
-        typeof letterParam === "object" && letterParam !== null
-          ? letterParam.id
-          : letterParam
-
-      router.push(`/letter-detail/${letterId}`)
-      return
-    }
-
+  const navigate = (screen: string) => {
     router.push(`/${screen}`)
   }
 
-  const handlePurchase = async (itemId: number) => {
+  const handleApply = async (themeKey: string) => {
     try {
-      await apiClient.purchaseItem(itemId)
+      setBusyKey(themeKey)
+      const room = await apiClient.setRoomTheme(themeKey)
+      setAppliedThemeKey(room.theme_key)
+      writeCachedThemeKey(room.theme_key)
+    } catch (error: any) {
+      alert(error?.message || "테마를 적용하지 못했어요.")
+    } finally {
+      setBusyKey(null)
+    }
+  }
 
-      const purchasesData = await apiClient.getUserPurchases()
-      setPurchases(
-        Array.isArray(purchasesData) ? (purchasesData as UserPurchase[]) : []
-      )
+  const handlePurchase = async (item: ShopItem) => {
+    const key = item.item_key || String(item.id)
+    try {
+      setBusyKey(key)
+      await apiClient.purchaseItem(item.id)
 
-      alert("구매가 완료되었습니다!")
-    } catch (error) {
-      console.error("Failed to purchase item:", error)
-      alert("구매에 실패했습니다.")
+      const [purchasesData, me] = await Promise.all([
+        apiClient.getUserPurchases(),
+        apiClient.getMe() as Promise<{ pearls?: number }>,
+      ])
+      setPurchases(Array.isArray(purchasesData) ? (purchasesData as UserPurchase[]) : [])
+      if (typeof me?.pearls === "number") notifyPearlBalance(me.pearls)
+    } catch (error: any) {
+      alert(error?.message || "구매에 실패했어요.")
+      setBusyKey(null)
+      return
+    }
+    setBusyKey(null)
+
+    if (item.item_key && confirm(`'${item.name}' 테마를 바로 적용할까요?`)) {
+      await handleApply(item.item_key)
     }
   }
 
@@ -108,7 +111,10 @@ export default function PearlShopPage() {
       onNavigate={navigate}
       items={items}
       purchases={purchases}
+      appliedThemeKey={appliedThemeKey}
+      busyKey={busyKey}
       onPurchase={handlePurchase}
+      onApply={handleApply}
     />
   )
 }

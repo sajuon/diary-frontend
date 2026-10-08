@@ -505,6 +505,19 @@ class ApiClient {
     return this.post("/api/web-push/test", data)
   }
 
+  // ===== 해도리 방 =====
+
+  async getRoom() {
+    return this.get<{ theme_key: string; owned_theme_keys: string[] }>("/api/room")
+  }
+
+  async setRoomTheme(themeKey: string) {
+    return this.put<{ theme_key: string; owned_theme_keys: string[] }>(
+      "/api/room/theme",
+      { theme_key: themeKey }
+    )
+  }
+
   async getShopItems(itemType?: string) {
     const query = itemType ? `?item_type=${itemType}` : ""
     return this.get(`/api/shop/items${query}`)

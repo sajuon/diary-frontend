@@ -1,8 +1,16 @@
 // /home/dori/diary-frontend/app/(appshell)/haedori/page.tsx
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import RoomBackground from "@/components/room-background"
+import { apiClient } from "@/lib/api"
+import {
+  DEFAULT_THEME_KEY,
+  getRoomTheme,
+  readCachedThemeKey,
+  writeCachedThemeKey,
+} from "@/lib/room-themes"
 
 const messages = [
   "오늘도 와줘서 고마워!",
@@ -18,6 +26,20 @@ const messages = [
 export default function HaedoriPage() {
   const router = useRouter()
   const [message, setMessage] = useState(messages[2])
+  const [themeKey, setThemeKey] = useState(DEFAULT_THEME_KEY)
+  const theme = getRoomTheme(themeKey)
+
+  useEffect(() => {
+    // 캐시로 먼저 그리고, 서버 값으로 맞춘다
+    setThemeKey(readCachedThemeKey())
+    apiClient
+      .getRoom()
+      .then((room) => {
+        setThemeKey(room.theme_key)
+        writeCachedThemeKey(room.theme_key)
+      })
+      .catch((err) => console.warn("Failed to load room theme:", err))
+  }, [])
 
   const changeMessage = () => {
     const candidates = messages.filter((m) => m !== message)
@@ -34,43 +56,9 @@ export default function HaedoriPage() {
   return (
     <div
       className="relative h-[100dvh] overflow-hidden px-5 pt-5 pb-0"
-      style={{
-        background:
-          "linear-gradient(180deg, #FFF8F0 0%, #F8E8D8 58%, #E9CBB0 100%)",
-      }}
+      style={{ background: theme.base }}
     >
-      {/* 왼쪽 밝은 커튼 */}
-      <div
-        className="absolute left-0 top-0 h-full w-[72px] pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(90deg, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.38) 55%, rgba(255,255,255,0) 100%)",
-        }}
-      />
-
-      {/* 벽 */}
-      <div
-        className="absolute left-0 right-0 top-0 h-[74%] pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(255,251,246,0.58) 0%, rgba(255,241,226,0.16) 100%)",
-        }}
-      />
-
-      {/* 바닥 */}
-      <div
-        className="absolute bottom-0 left-0 h-[30%] w-full pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(180deg, #F1D5B9 0%, #E7BE9C 100%)",
-          borderTop: "1px solid rgba(202,158,120,0.3)",
-        }}
-      />
-
-      {/* 바닥 라인 */}
-      <div className="absolute bottom-[25%] left-0 h-px w-full bg-[#D3A983]/30" />
-      <div className="absolute bottom-[18%] left-0 h-px w-full bg-[#D3A983]/24" />
-      <div className="absolute bottom-[10%] left-0 h-px w-full bg-[#D3A983]/20" />
+      <RoomBackground theme={theme} />
 
       {/* 왼쪽 식물 */}
       <div className="absolute left-[-10px] bottom-[11%] z-[1] h-40 w-32 pointer-events-none">
@@ -142,7 +130,7 @@ export default function HaedoriPage() {
           ‹
         </button>
 
-        <h1 className="text-lg font-extrabold" style={{ color: "#3D3530" }}>
+        <h1 className="text-lg font-extrabold" style={{ color: theme.title }}>
           해도리
         </h1>
 
