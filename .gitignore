@@ -21,3 +21,5 @@ coverage/
 .idea/
 *.local
 *.log
+# TypeScript build cache
+*.tsbuildinfo

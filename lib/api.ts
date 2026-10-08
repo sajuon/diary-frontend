@@ -338,10 +338,6 @@ class ApiClient {
     return this.get("/api/users/me")
   }
 
-  async addPearls(amount: number) {
-    return this.post("/api/users/me/add-pearls", { amount })
-  }
-
   async getDashboard() {
     return this.get("/api/dashboard")
   }
@@ -366,17 +362,6 @@ class ApiClient {
     params.set("diary_type", diaryType)
 
     return this.get(`/api/diary/today?${params.toString()}`)
-  }
-
-  async getDiaryQuestion() {
-    return this.get<{
-      question: string
-      model?: string
-      source_type?: string
-      entry_date?: string
-      created_at?: string
-      cached?: boolean
-    }>("/api/diary/question")
   }
 
   async getQuestionHistory(paramsInput: {
@@ -417,25 +402,6 @@ class ApiClient {
     return this.delete(`/api/diary/date/${date}?${params.toString()}`)
   }
 
-  async generateMissingDiarySummaryTags() {
-    return this.post<{
-      message: string
-      updated_count: number
-      items: Array<{
-        id: number
-        entry_date: string
-        diary_type?: DiaryType
-        summary_tag: string
-      }>
-      failed_count?: number
-      failed_items?: Array<{
-        id: number
-        entry_date: string
-        reason: string
-      }>
-    }>("/api/diary/summary-tag/batch-missing")
-  }
-
   async getMonthlyReport(year: number, month: number) {
     return this.get<MonthlyReportResponse>(
       `/api/reports/monthly?year=${year}&month=${month}`
@@ -458,14 +424,6 @@ class ApiClient {
     return this.get(`/api/letters?month=${month}`)
   }
 
-  async getLatestLetter() {
-    return this.get("/api/letters/latest")
-  }
-
-  async getTodayLetter() {
-    return this.get("/api/letters/today")
-  }
-
   async getLetterById(letterId: number) {
     return this.get(`/api/letters/${letterId}`)
   }
@@ -474,35 +432,11 @@ class ApiClient {
     return this.patch(`/api/letters/${letterId}/read`)
   }
 
-  async updateLetterFavorite(letterId: number, isFavorite: boolean) {
-    return this.patch(`/api/letters/${letterId}/favorite`, {
-      is_favorite: isFavorite,
-    })
-  }
-
-  async generateLetter(targetDate?: string, force = false) {
-    const params = new URLSearchParams()
-    if (targetDate) params.set("target_date", targetDate)
-    if (force) params.set("force", "true")
-
-    const query = params.toString() ? `?${params.toString()}` : ""
-
-    return this.post(`/api/letters/generate${query}`)
-  }
-
   async generateLetterForDiary(targetDate: string) {
     const params = new URLSearchParams()
     params.set("target_date", targetDate)
 
     return this.post(`/api/letters/generate-with-pearl?${params.toString()}`)
-  }
-
-  async generateLetterWithPearl(targetDate: string) {
-    return this.generateLetterForDiary(targetDate)
-  }
-
-  async generateTodayLetter() {
-    return this.generateLetterForDiary(this.getTodayDateString())
   }
 
   private getTodayDateString() {
@@ -516,10 +450,6 @@ class ApiClient {
 
   async getTodayFortune() {
     return this.get("/api/fortune/today")
-  }
-
-  async getFortunes(fromDate: string, toDate: string) {
-    return this.get(`/api/fortune?from_date=${fromDate}&to_date=${toDate}`)
   }
 
   async getBirthProfile() {
