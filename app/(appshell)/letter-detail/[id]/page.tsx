@@ -29,15 +29,25 @@ export default function LetterDetailPage() {
 
   useEffect(() => {
     const loadLetter = async () => {
+      const letterId = Number(id)
+
       try {
-        await apiClient.markLetterAsRead(Number(id))
-        const data = await apiClient.getLetterById(Number(id))
+        const data = await apiClient.getLetterById(letterId)
         setLetter(data as LetterDetailResponse)
       } catch (error) {
         console.error("Failed to load letter:", error)
         setLetter(null)
+        return
       } finally {
         setLoading(false)
+      }
+
+      // 읽음 처리는 실패해도 편지 표시에는 영향을 주지 않는다.
+      try {
+        const updated = await apiClient.markLetterAsRead(letterId)
+        if (updated) setLetter(updated as LetterDetailResponse)
+      } catch (error) {
+        console.error("Failed to mark letter as read:", error)
       }
     }
 
