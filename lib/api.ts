@@ -18,7 +18,7 @@ export type RoomState = {
   letter_paper_key: string
   owned_letter_paper_keys: string[]
   owned_room_item_keys: string[]
-  placements: Array<{ item_key: string; x: number; y: number }>
+  placements: Array<{ item_key: string; x: number; y: number; scale?: number }>
 }
 
 // ===== 해도리 성격 + 간식 =====
@@ -564,7 +564,7 @@ class ApiClient {
     return this.put<RoomState>("/api/room/theme", { theme_key: themeKey })
   }
 
-  async setRoomPlacements(placements: Array<{ item_key: string; x: number; y: number }>) {
+  async setRoomPlacements(placements: Array<{ item_key: string; x: number; y: number; scale?: number }>) {
     return this.put<RoomState>("/api/room/placements", { placements })
   }
 

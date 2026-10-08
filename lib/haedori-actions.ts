@@ -73,7 +73,7 @@ export function spotForItem(item: RoomItemDef, placement: Placement): HaedoriSpo
   const action = ITEM_ACTIONS[item.key]
   if (!action) return null
   const side = placement.x > 50 ? -1 : 1
-  const x = placement.x + action.dx * side
+  const x = placement.x + action.dx * (placement.scale ?? 1) * side // 소품이 커지면 옆으로 더 비켜 선다
   const y = item.zone === "wall" ? action.floorY ?? HOME_SPOT.y : placement.y + (action.dy ?? 0)
   return clampSpot({ x, y })
 }

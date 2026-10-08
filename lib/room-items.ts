@@ -32,7 +32,16 @@ export const ROOM_ITEMS: Record<string, RoomItemDef> = {
   rug: { key: "rug", name: "러그", zone: "floor", width: 72, layer: "under", image: "/room-items/rug.png", aspect: 0.531 },
 }
 
-export type Placement = { item_key: string; x: number; y: number }
+/** scale: 크기 배율 (꾸미기에서 모서리를 끌어 조절, 없으면 1) */
+export type Placement = { item_key: string; x: number; y: number; scale?: number }
+
+export const MIN_SCALE = 0.6
+export const MAX_SCALE = 1.8
+
+/** 배치 배율을 반영한 소품 너비 (방 너비 대비 %) */
+export function placedWidth(item: RoomItemDef, p: Placement): number {
+  return item.width * (p.scale ?? 1)
+}
 
 // 방 화면 안에서 소품을 놓을 수 있는 범위 (%)
 // 벽 소품: 중심 기준 / 바닥 소품: 바닥에 닿는 아래 중앙 기준
@@ -52,13 +61,21 @@ export function defaultPlacement(item: RoomItemDef, index: number): Placement {
   return { item_key: item.key, x, y: 80 }
 }
 
+export function clampScale(item: RoomItemDef, scale: number): number {
+  // 방 너비의 95%를 넘지 않게
+  const maxByRoom = 95 / item.width
+  return Math.min(MAX_SCALE, maxByRoom, Math.max(MIN_SCALE, scale))
+}
+
 export function clampPlacement(item: RoomItemDef, p: Placement): Placement {
-  const half = item.width / 2
+  const scale = clampScale(item, p.scale ?? 1)
+  const half = (item.width * scale) / 2
   const bounds = ZONE_BOUNDS[item.zone]
   return {
     item_key: p.item_key,
     x: Math.min(100 - half, Math.max(half, p.x)),
     y: Math.min(bounds.maxY, Math.max(bounds.minY, p.y)),
+    ...(Math.abs(scale - 1) > 0.001 ? { scale: Math.round(scale * 100) / 100 } : {}),
   }
 }
 

@@ -23,6 +23,7 @@ import {
 } from "@/lib/haedori-actions"
 import {
   ROOM_ITEMS,
+  clampScale,
   clampPlacement,
   defaultPlacement,
   type Placement,
@@ -40,13 +41,28 @@ const menuItems = [
   { label: "편지지 상점", image: "/images/icons/pearlshop.png", path: "/letter-shop" },
 ]
 
-type DragState = { key: string; pointerId: number; dx: number; dy: number }
+type DragState =
+  | { mode: "move"; key: string; pointerId: number; dx: number; dy: number }
+  | { mode: "resize"; key: string; pointerId: number; cx: number; cy: number; startDist: number; startScale: number }
+
+// 말풍선 크기 / 해도리 발끝에서 머리 위까지 거리 (해도리 그림 상자 192px 기준)
+const BUBBLE_W = 240
+const HEAD_OFFSET_PX = 150
 
 type FeedEffect = { id: number; gained: FeedSnackResult["fed"]["gained"] }
 
 export default function HaedoriPage() {
   const router = useRouter()
   const roomRef = useRef<HTMLDivElement>(null)
+  const [roomW, setRoomW] = useState(0)
+  useEffect(() => {
+    const el = roomRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setRoomW(el.clientWidth))
+    ro.observe(el)
+    setRoomW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
 
   const [message, setMessage] = useState(NEUTRAL_LINES[0])
   const [themeKey, setThemeKey] = useState(DEFAULT_THEME_KEY)
@@ -274,8 +290,28 @@ export default function HaedoriPage() {
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
     const point = toPercent(e.clientX, e.clientY)
-    dragRef.current = { key, pointerId: e.pointerId, dx: current.x - point.x, dy: current.y - point.y }
+    dragRef.current = { mode: "move", key, pointerId: e.pointerId, dx: current.x - point.x, dy: current.y - point.y }
     setSelectedKey(key)
+  }
+
+  // 크기 조절: 소품 가운데에서 손가락이 멀어지면 커지고, 가까워지면 작아진다
+  const handleResizeStart = (key: string) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    const current = draft.find((p) => p.item_key === key)
+    if (!current) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const box = (e.currentTarget.parentElement ?? e.currentTarget).getBoundingClientRect()
+    const cx = box.left + box.width / 2
+    const cy = box.top + box.height / 2
+    dragRef.current = {
+      mode: "resize",
+      key,
+      pointerId: e.pointerId,
+      cx,
+      cy,
+      startDist: Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy)),
+      startScale: current.scale ?? 1,
+    }
   }
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -283,14 +319,36 @@ export default function HaedoriPage() {
     if (!drag || drag.pointerId !== e.pointerId) return
     const item = ROOM_ITEMS[drag.key]
     if (!item) return
+    if (drag.mode === "resize") {
+      setDraft((prev) =>
+        prev.map((p) => {
+          if (p.item_key !== drag.key) return p
+          const dist = Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy)
+          const scale = clampScale(item, drag.startScale * (dist / drag.startDist))
+          return clampPlacement(item, { ...p, scale })
+        })
+      )
+      return
+    }
     const point = toPercent(e.clientX, e.clientY)
-    const next = clampPlacement(item, { item_key: drag.key, x: point.x + drag.dx, y: point.y + drag.dy })
-    setDraft((prev) => prev.map((p) => (p.item_key === drag.key ? next : p)))
+    setDraft((prev) =>
+      prev.map((p) =>
+        p.item_key === drag.key
+          ? clampPlacement(item, { ...p, x: point.x + drag.dx, y: point.y + drag.dy })
+          : p
+      )
+    )
   }
 
   const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null
   }
+
+  // 말풍선 위치 계산 (방 너비 px가 필요)
+  const bubbleHalfPct = roomW ? Math.min(36, (BUBBLE_W / 2 / roomW) * 100) + 3 : 40
+  const bubbleX = Math.min(100 - bubbleHalfPct, Math.max(bubbleHalfPct, spot.x))
+  const tailLimit = BUBBLE_W / 2 - 28
+  const tailShiftPx = Math.max(-tailLimit, Math.min(tailLimit, ((spot.x - bubbleX) / 100) * roomW))
 
   const shown = editing ? draft : placements
   const ownedItems = ownedItemKeys.map((k) => ROOM_ITEMS[k]).filter(Boolean)
@@ -322,6 +380,7 @@ export default function HaedoriPage() {
             editing={editing}
             selected={editing && selectedKey === p.item_key}
             onPointerDown={handleItemPointerDown(p.item_key)}
+            onResizeStart={editing ? handleResizeStart(p.item_key) : undefined}
             onRemove={() => removeItem(p.item_key)}
             onTap={!editing && ITEM_ACTIONS[p.item_key] ? () => goUseItem(p.item_key, true) : undefined}
           />
@@ -466,8 +525,18 @@ export default function HaedoriPage() {
             ))}
           </div>
 
-          {/* 말풍선 */}
-          <div className="absolute left-[8%] top-[13%] z-[55] w-[62%] max-w-[260px]">
+          {/* 말풍선: 해도리 머리 위에 붙어서 같이 움직인다. 화면 밖으로 안 나가게 가운데 쪽으로 당기고, 꼬리만 해도리를 가리킨다 */}
+          <div
+            className="pointer-events-none absolute z-[55]"
+            style={{
+              width: BUBBLE_W,
+              maxWidth: "72%",
+              left: `${bubbleX}%`,
+              top: `calc(${spot.y}% - ${HEAD_OFFSET_PX}px)`,
+              transform: "translate(-50%, -100%)",
+              transition: walkMs ? `left ${walkMs}ms linear, top ${walkMs}ms linear` : undefined,
+            }}
+          >
             <div
               className="relative whitespace-pre-line rounded-[28px] px-5 py-4 text-center text-sm font-extrabold leading-6"
               style={{
@@ -479,8 +548,10 @@ export default function HaedoriPage() {
             >
               {message}
               <div
-                className="absolute -bottom-2 left-[70%] h-4 w-4"
+                className="absolute -bottom-2 h-4 w-4"
                 style={{
+                  left: `calc(50% + ${tailShiftPx}px)`,
+                  transition: walkMs ? `left ${walkMs}ms linear` : undefined,
                   background: "rgba(255,252,248,0.96)",
                   borderRight: "1.5px solid #E5D1C3",
                   borderBottom: "1.5px solid #E5D1C3",
@@ -495,7 +566,7 @@ export default function HaedoriPage() {
             <div
               key={feedEffect.id}
               className="haedori-feed-pop pointer-events-none absolute z-[56] flex flex-col items-center gap-1"
-              style={{ left: `${spot.x}%`, top: `calc(${spot.y}% - 13rem)` }}
+              style={{ left: `${Math.min(spot.x + 22, 82)}%`, top: `calc(${spot.y}% - 9rem)` }}
             >
               {feedEffect.gained.map((g) => (
                 <span
