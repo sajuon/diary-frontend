@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { apiClient, type DiaryType } from "@/lib/api"
+import { EMOTIONS, FALLBACK_EMOTION } from "@/components/emotion-stone"
 import { getDailyQuestion } from "@/lib/daily-questions"
 import {
   clearDiaryMonthInvalidation,
@@ -40,14 +41,10 @@ type DiaryCalendarItem = {
 
 type DiaryMonthCache = Record<string, DiaryApiItem[]>
 
-const moodColors: Record<string, string> = {
-  happy: "#F4C97A",
-  calm: "#A8BBA5",
-  sad: "#A8C4D4",
-  angry: "#F2A8A8",
-  tired: "#C4B8C4",
-  excited: "#F2C4A8",
-}
+// 감정 색은 감정 조약돌(emotion-stone.tsx)과 같은 값을 쓴다 (13종)
+const moodColors: Record<string, string> = Object.fromEntries(
+  EMOTIONS.map((e) => [e.key, e.color])
+)
 
 const weatherIcons: Record<string, string> = {
   sunny: "☀️",
@@ -469,8 +466,8 @@ export default function CalendarScreen({
                       className="w-2 h-2 rounded-full mt-1"
                       style={{
                         background:
-                          moodColors[displayEntry.mood_tags?.[0] || "calm"] ||
-                          "#A8BBA5",
+                          moodColors[displayEntry.mood_tags?.[0] || FALLBACK_EMOTION] ||
+                          moodColors[FALLBACK_EMOTION],
                       }}
                     />
 
