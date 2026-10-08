@@ -8,6 +8,17 @@ import {
   storeAccessToken,
   storeRefreshToken,
 } from "@/lib/auth-storage"
+import type { PearlReward } from "@/lib/pearl-events"
+
+export type { PearlReward }
+
+export type LetterFeedback = {
+  letter_id: number
+  rating: "like" | "dislike"
+  comment: string
+  created_at: string
+  updated_at: string
+}
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
 
@@ -498,6 +509,42 @@ class ApiClient {
 
   async getUserPurchases() {
     return this.get("/api/shop/purchases")
+  }
+
+  // ===== 진주 =====
+
+  async checkIn() {
+    return this.post<{ pearls: number; pearl_reward: PearlReward | null }>(
+      "/api/pearls/check-in"
+    )
+  }
+
+  async getFortuneCookieInfo() {
+    return this.get<{ price: number; table: Array<{ amount: number; chance: number }> }>(
+      "/api/pearls/fortune-cookie"
+    )
+  }
+
+  async buyFortuneCookie() {
+    return this.post<{ price: number; reward: number; is_jackpot: boolean; balance: number }>(
+      "/api/pearls/fortune-cookie"
+    )
+  }
+
+  // ===== 편지 피드백 =====
+
+  async getLetterFeedback(letterId: number) {
+    return this.get<LetterFeedback | null>(`/api/letters/${letterId}/feedback`)
+  }
+
+  async sendLetterFeedback(
+    letterId: number,
+    data: { rating: "like" | "dislike"; comment: string }
+  ) {
+    return this.post<LetterFeedback & { pearl_reward: PearlReward | null }>(
+      `/api/letters/${letterId}/feedback`,
+      data
+    )
   }
 }
 

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react"
 import { getDailyQuestion } from "@/lib/daily-questions"
 import { getQuestionUserKeyFromDashboard } from "@/lib/question-user-key"
 import { useUserPearls } from "../hooks/use-user-pearls"
+import { handlePearlReward } from "@/lib/pearl-events"
 import { FortuneIcon, type FortuneType } from "@/components/fortune-icon"
 
 interface HomeScreenProps {
@@ -242,6 +243,7 @@ export default function HomeScreen({
       }
 
       const data = (await res.json()) as ManseData
+      handlePearlReward(data)
 
       setManseDataMap((prev) => ({
         ...prev,

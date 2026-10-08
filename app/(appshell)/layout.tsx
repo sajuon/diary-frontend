@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
+import PearlToaster from "@/components/pearl-toast"
 
 export default function AppShellLayout({
   children,
@@ -32,11 +33,17 @@ export default function AppShellLayout({
   }
 
   if (isMobile) {
-    return <>{children}</>
+    return (
+      <>
+        <PearlToaster />
+        {children}
+      </>
+    )
   }
 
   return (
     <div className="h-screen w-full flex bg-[#F3F0EB] overflow-hidden">
+      <PearlToaster />
       {/* 왼쪽 브랜딩 영역 */}
       <section className="w-1/2 h-full flex flex-col justify-center px-16 bg-[#F8F6F2]">
         <div className="max-w-xl mx-auto w-full">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import HomeScreen from "@/components/home-screen"
 import { apiClient, ApiError } from "@/lib/api"
+import { handlePearlReward } from "@/lib/pearl-events"
 
 type BirthProfile = {
   birth_date?: string
@@ -175,6 +176,12 @@ export default function HomePage() {
 
         await apiClient.getMe()
 
+        // 출석 보상: 하루 첫 접속 시 +2 진주 (실패해도 홈 화면은 그대로 진행)
+        apiClient
+          .checkIn()
+          .then(handlePearlReward)
+          .catch((err) => console.warn("check-in failed", err))
+
         const [
           dashboardResult,
           purchasesResult,
@@ -245,6 +252,7 @@ export default function HomePage() {
       setIsFortuneLoading(true)
 
       const fortune = await apiClient.getTodayFortune()
+      handlePearlReward(fortune)
       setTodayFortune(fortune as TodayFortune)
       return true
     } catch (error: any) {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { onPearlBalance } from "@/lib/pearl-events"
 
 export function useUserPearls() {
   const [pearls, setPearls] = useState<number | null>(null)
@@ -15,6 +16,8 @@ export function useUserPearls() {
       }
     }
     fetchUser()
+    // 진주 보상·포춘쿠키 등으로 잔액이 바뀌면 바로 반영
+    return onPearlBalance(setPearls)
   }, [])
   return pearls
 }

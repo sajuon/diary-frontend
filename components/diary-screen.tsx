@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
+import { handlePearlReward } from "@/lib/pearl-events"
 import { getDailyQuestion } from "@/lib/daily-questions"
 import { getQuestionUserKeyFromStorage } from "@/lib/question-user-key"
 import {
@@ -236,6 +237,7 @@ export default function DiaryScreen({
         )) as DiarySaveResponse
       } else {
         saved = (await apiClient.createDiary(payload)) as DiarySaveResponse
+        handlePearlReward(saved)
       }
 
       const entryDate: string = saved?.entry_date || selectedDate
