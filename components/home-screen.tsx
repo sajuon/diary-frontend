@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react"
 import { getDailyQuestion } from "@/lib/daily-questions"
 import { getQuestionUserKeyFromDashboard } from "@/lib/question-user-key"
 import { useUserPearls } from "../hooks/use-user-pearls"
+import { FortuneIcon, type FortuneType } from "@/components/fortune-icon"
 
 interface HomeScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
@@ -29,8 +30,6 @@ interface HomeScreenProps {
     birth_time?: string
   } | null
 }
-
-type FortuneType = "daily" | "love" | "money" | "study"
 
 type NotificationItem = {
   id: string
@@ -183,67 +182,40 @@ export default function HomeScreen({
       ? fortuneHint.keyword
       : "오늘 흐름 보기"
 
+  // 이 모달은 todayFortune 이 있을 때만 열리므로 폴백은 거의 쓰이지 않습니다.
   const flowSummary =
     typeof fortuneHint?.summary === "string"
       ? fortuneHint.summary
       : typeof fortuneHint?.message === "string"
         ? fortuneHint.message
-        : "버튼을 눌러 오늘의 흐름을 확인해보세요."
+        : ""
 
   const flowSections = [
     {
       title: "조심할 것",
-      content: todayFortune?.caution || "버튼을 누르면 오늘의 흐름이 생성돼요",
+      content: todayFortune?.caution || "",
       icon: "⚠️",
     },
     {
       title: "기대해도 좋은 일",
-      content:
-        todayFortune?.good_thing ||
-        "생성 후 오늘의 좋은 기운을 확인할 수 있어요",
+      content: todayFortune?.good_thing || "",
       icon: "✨",
     },
     {
       title: "한 줄 조언",
-      content: todayFortune?.ritual || "오늘의 하루를 눌러 확인해보세요",
+      content: todayFortune?.ritual || "",
       icon: "💬",
     },
-  ]
+  ].filter((s) => s.content)
 
   const fortuneCards: Array<{
     type: FortuneType
     title: string
-    icon: string
-    content: string
   }> = [
-    {
-      type: "daily",
-      title: "오늘의 운세",
-      icon: "🌤",
-      content: flowSummary,
-    },
-    {
-      type: "love",
-      title: "오늘의 연애운",
-      icon: "💗",
-      content:
-        todayFortune?.love || "관계와 감정의 흐름을 자세히 확인해보세요.",
-    },
-    {
-      type: "money",
-      title: "오늘의 재물운",
-      icon: "💰",
-      content:
-        todayFortune?.good_thing ||
-        "소비와 금전 흐름에 대한 힌트를 확인해보세요.",
-    },
-    {
-      type: "study",
-      title: "오늘의 학업운",
-      icon: "📚",
-      content:
-        todayFortune?.study || "집중력과 공부 흐름을 자세히 확인해보세요.",
-    },
+    { type: "daily", title: "오늘의 운세" },
+    { type: "love", title: "오늘의 연애운" },
+    { type: "money", title: "오늘의 재물운" },
+    { type: "study", title: "오늘의 학업운" },
   ]
 
   const manseSummary = profile?.birth_date
@@ -590,35 +562,28 @@ export default function HomeScreen({
               {fortuneCards.map((card) => (
                 <div
                   key={card.type}
-                  className="aspect-square rounded-[26px] p-4 flex flex-col"
+                  className="aspect-square rounded-[26px] p-4 flex flex-col items-center justify-between overflow-hidden"
                   style={{
                     background: "#FFFCF8",
                     border: "1.5px solid #E5DDD5",
                     boxShadow: "0 2px 10px rgba(0,0,0,0.045)",
                   }}
                 >
-                  <div className="text-2xl mb-3">{card.icon}</div>
+                  <div className="flex flex-col items-center gap-2 pt-1">
+                    <FortuneIcon type={card.type} size={48} />
 
-                  <p
-                    className="text-sm font-extrabold mb-2"
-                    style={{ color: "#3D3530" }}
-                  >
-                    {card.title}
-                  </p>
-
-                  <p
-                    className="text-xs leading-5 line-clamp-3 flex-1"
-                    style={{ color: "#8C7A70" }}
-                  >
-                    {isTodayFortuneLoading
-                      ? "해도리가 살펴보는 중이에요..."
-                      : card.content}
-                  </p>
+                    <p
+                      className="text-sm font-extrabold text-center"
+                      style={{ color: "#3D3530" }}
+                    >
+                      {card.title}
+                    </p>
+                  </div>
 
                   <button
                     onClick={() => void handleOpenManse(card.type, card.title)}
                     disabled={manseLoading}
-                    className="mt-3 w-full py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-70"
+                    className="w-full py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-70"
                     style={{
                       background: "#F7EEE7",
                       color: "#C9856A",
@@ -797,20 +762,22 @@ export default function HomeScreen({
               </div>
             </div>
 
-            <div
-              className="px-4 py-4 rounded-2xl mb-3"
-              style={{
-                background: "#F2C4A820",
-                border: "1.5px solid #F2C4A850",
-              }}
-            >
-              <p
-                className="text-sm leading-relaxed"
-                style={{ color: "#3D3530" }}
+            {flowSummary && (
+              <div
+                className="px-4 py-4 rounded-2xl mb-3"
+                style={{
+                  background: "#F2C4A820",
+                  border: "1.5px solid #F2C4A850",
+                }}
               >
-                {flowSummary}
-              </p>
-            </div>
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ color: "#3D3530" }}
+                >
+                  {flowSummary}
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               {flowSections.map((s) => (

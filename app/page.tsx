@@ -7,7 +7,7 @@ import { apiClient } from "@/lib/api"
 import {
   clearAccessToken,
   getStoredAccessToken,
-  storeAccessToken,
+  storeTokens,
 } from "@/lib/auth-storage"
 
 export default function App() {
@@ -32,7 +32,11 @@ export default function App() {
         const refreshResult = await apiClient.refresh()
 
         if (refreshResult?.access_token) {
-          storeAccessToken(refreshResult.access_token, true)
+          storeTokens(
+            refreshResult.access_token,
+            refreshResult.refresh_token,
+            true
+          )
           await apiClient.getMe()
           router.replace("/home")
           return

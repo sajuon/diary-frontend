@@ -140,6 +140,22 @@ export default function DiaryDetailPage() {
       return
     }
 
+    if (screen === "diary") {
+      const query = new URLSearchParams()
+
+      if (typeof params?.date === "string") {
+        query.set("date", params.date)
+      }
+
+      if (typeof params?.diary_type === "string") {
+        query.set("diary_type", params.diary_type)
+      }
+
+      const queryString = query.toString()
+      router.push(queryString ? `/diary?${queryString}` : "/diary")
+      return
+    }
+
     router.push(`/${screen}`)
   }
 

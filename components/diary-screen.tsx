@@ -1,4 +1,3 @@
-//변환 끝
 // /home/dori/diary-frontend/components/diary-screen.tsx
 "use client"
 
@@ -12,6 +11,18 @@ import {
   getDiaryMonthKeyFromDate,
   invalidateDiaryMonth,
 } from "@/lib/diary-cache"
+import {
+  EmotionStonePicker,
+  isEmotionKey,
+  FALLBACK_EMOTION,
+  type EmotionKey,
+} from "@/components/emotion-stone"
+import {
+  WeatherTilePicker,
+  isWeatherKey,
+  FALLBACK_WEATHER,
+  type WeatherKey,
+} from "@/components/weather-tile"
 
 interface DiaryScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
@@ -36,23 +47,6 @@ type DiarySaveResponse = {
   created_at?: string
   updated_at?: string
 }
-
-const weathers = [
-  { id: "sunny", label: "맑음", icon: "☀️" },
-  { id: "cloudy", label: "흐림", icon: "☁️" },
-  { id: "rainy", label: "비", icon: "🌧️" },
-  { id: "snowy", label: "눈", icon: "❄️" },
-  { id: "windy", label: "바람", icon: "🌬️" },
-]
-
-const moods = [
-  { id: "happy", label: "행복", icon: "😊", color: "#F4C97A" },
-  { id: "calm", label: "평온", icon: "😌", color: "#A8BBA5" },
-  { id: "sad", label: "슬픔", icon: "😢", color: "#A8C4D4" },
-  { id: "angry", label: "화남", icon: "😤", color: "#F2A8A8" },
-  { id: "tired", label: "피곤", icon: "😪", color: "#C4B8C4" },
-  { id: "excited", label: "설렘", icon: "🥰", color: "#F2C4A8" },
-]
 
 function getTodayDateString() {
   const now = new Date()
@@ -95,18 +89,25 @@ export default function DiaryScreen({
     return isValidDateString(dateParam) ? dateParam : getTodayDateString()
   }, [searchParams])
 
+  const initialDiaryType = useMemo<DiaryType>(() => {
+    return searchParams.get("diary_type") === "free" ? "free" : "question"
+  }, [searchParams])
+
   const isToday = selectedDate === getTodayDateString()
 
-  const [activeTab, setActiveTab] = useState<DiaryType>("question")
+  const [activeTab, setActiveTab] = useState<DiaryType>(initialDiaryType)
   const [isEdit, setIsEdit] = useState(false)
   const [canEdit, setCanEdit] = useState(true)
 
   const [text, setText] = useState("")
-  const [selectedWeather, setSelectedWeather] = useState("sunny")
-  const [selectedMood, setSelectedMood] = useState("calm")
+  const [selectedWeather, setSelectedWeather] =
+    useState<WeatherKey>(FALLBACK_WEATHER)
+  const [selectedMood, setSelectedMood] =
+    useState<EmotionKey>(FALLBACK_EMOTION)
   const [question, setQuestion] = useState("오늘의 질문을 준비하고 있어요...")
 
   const [loading, setLoading] = useState(false)
+  const [showTypeInfo, setShowTypeInfo] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -115,14 +116,19 @@ export default function DiaryScreen({
   const resetForm = () => {
     setIsEdit(false)
     setText("")
-    setSelectedWeather("sunny")
-    setSelectedMood("calm")
+    setSelectedWeather(FALLBACK_WEATHER)
+    setSelectedMood(FALLBACK_EMOTION)
   }
 
+  // 23시 컷오프 제거: 하루 중 언제든 작성 가능
+  // (유예 시간 도입 시 이 자리에서 다시 판단)
   useEffect(() => {
-    const now = new Date()
-    setCanEdit(isToday ? now.getHours() < 23 : true)
+    setCanEdit(true)
   }, [isToday])
+
+  useEffect(() => {
+    setActiveTab(initialDiaryType)
+  }, [initialDiaryType])
 
   useEffect(() => {
     async function fetchDiaryByType() {
@@ -142,8 +148,14 @@ export default function DiaryScreen({
         }
 
         setText(data.content || "")
-        setSelectedWeather(data.weather || "sunny")
-        setSelectedMood(data.mood_tags?.[0] || "calm")
+
+        // 구버전이나 알 수 없는 값이 들어와도 화면이 깨지지 않게 방어
+        setSelectedWeather(
+          isWeatherKey(data.weather) ? data.weather : FALLBACK_WEATHER
+        )
+
+        const savedMood = data.mood_tags?.[0]
+        setSelectedMood(isEmotionKey(savedMood) ? savedMood : FALLBACK_EMOTION)
 
         if (activeTab === "question" && data.question_text) {
           setQuestion(data.question_text)
@@ -273,24 +285,68 @@ export default function DiaryScreen({
       )}
 
       <div className="px-5 mb-4">
-        <div className="flex rounded-2xl p-1" style={{ background: "#EDE8E0" }}>
-          {(["question", "free"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
-              style={{
-                background: activeTab === tab ? "#FFFCF8" : "transparent",
-                color: activeTab === tab ? "#C9856A" : "#9A8F87",
-                boxShadow:
-                  activeTab === tab ? "0 2px 6px rgba(0,0,0,0.06)" : "none",
-              }}
-              type="button"
-            >
-              {tab === "question" ? "질문형" : "자유형"}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div
+            className="flex flex-1 rounded-2xl p-1"
+            style={{ background: "#EDE8E0" }}
+          >
+            {(["question", "free"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
+                style={{
+                  background: activeTab === tab ? "#FFFCF8" : "transparent",
+                  color: activeTab === tab ? "#C9856A" : "#9A8F87",
+                  boxShadow:
+                    activeTab === tab ? "0 2px 6px rgba(0,0,0,0.06)" : "none",
+                }}
+                type="button"
+              >
+                {tab === "question" ? "질문형" : "자유형"}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setShowTypeInfo((v) => !v)}
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-extrabold transition-all active:scale-95"
+            style={{
+              background: showTypeInfo ? "#C9856A" : "#FFFCF8",
+              color: showTypeInfo ? "#FFFCF8" : "#9A8F87",
+              border: showTypeInfo
+                ? "1.5px solid #C9856A"
+                : "1.5px solid #E5DDD5",
+            }}
+            type="button"
+            aria-expanded={showTypeInfo}
+            aria-controls="diary-type-info"
+            aria-label="일기 종류 안내"
+          >
+            i
+          </button>
         </div>
+
+        {showTypeInfo && (
+          <div
+            id="diary-type-info"
+            className="mt-2.5 rounded-2xl px-4 py-3"
+            style={{
+              background: "#FFF9F0",
+              border: "1.5px solid rgba(242,196,168,0.55)",
+            }}
+          >
+            <p
+              className="text-xs font-bold leading-relaxed"
+              style={{ color: "#3D3530" }}
+            >
+              자유형 일기는 해도리 피드백과 답장을 받을 수 있어요.
+            </p>
+            <p className="text-xs mt-1" style={{ color: "#9A8F87" }}>
+              질문형 일기는 기록용으로만 저장돼요.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 space-y-4 pb-28">
@@ -380,26 +436,29 @@ export default function DiaryScreen({
           </div>
         )}
 
-        {activeTab === "free" && (
-          <div
-            className="rounded-3xl px-5 py-4"
-            style={{
-              background: "#FFF9F0",
-              border: "1.5px solid rgba(242,196,168,0.55)",
-              boxShadow: "0 4px 16px rgba(201,133,106,0.08)",
-            }}
-          >
-            <p
-              className="text-sm font-bold leading-relaxed"
-              style={{ color: "#3D3530" }}
-            >
-              자유형 일기는 해도리 피드백과 답장을 받을 수 있어요.
-            </p>
-            <p className="text-xs mt-1.5" style={{ color: "#9A8F87" }}>
-              질문형 일기는 기록용으로만 저장돼요.
-            </p>
-          </div>
-        )}
+        <div>
+          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
+            오늘의 날씨
+          </p>
+
+          <WeatherTilePicker
+            value={selectedWeather}
+            onChange={setSelectedWeather}
+            disabled={fetching}
+          />
+        </div>
+
+        <div>
+          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
+            오늘의 감정 돌
+          </p>
+
+          <EmotionStonePicker
+            value={selectedMood}
+            onChange={setSelectedMood}
+            disabled={fetching}
+          />
+        </div>
 
         <div
           className="rounded-3xl overflow-hidden"
@@ -429,78 +488,6 @@ export default function DiaryScreen({
             <span className="text-xs" style={{ color: "#C4B8B0" }}>
               {text.length}자
             </span>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
-            오늘 날씨
-          </p>
-
-          <div className="flex gap-2">
-            {weathers.map((w) => (
-              <button
-                key={w.id}
-                onClick={() => setSelectedWeather(w.id)}
-                className="flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all active:scale-95"
-                style={{
-                  background:
-                    selectedWeather === w.id ? "#FFFCF8" : "transparent",
-                  border:
-                    selectedWeather === w.id
-                      ? "1.5px solid #C9856A"
-                      : "1.5px solid #E5DDD5",
-                }}
-                type="button"
-              >
-                <span className="text-xl">{w.icon}</span>
-
-                <span
-                  className="text-xs font-semibold"
-                  style={{
-                    color: selectedWeather === w.id ? "#C9856A" : "#9A8F87",
-                  }}
-                >
-                  {w.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
-            오늘 기분
-          </p>
-
-          <div className="grid grid-cols-6 gap-1.5">
-            {moods.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setSelectedMood(m.id)}
-                className="flex flex-col items-center gap-1 py-2.5 rounded-2xl transition-all active:scale-95"
-                style={{
-                  background: selectedMood === m.id ? `${m.color}30` : "#FFFCF8",
-                  border:
-                    selectedMood === m.id
-                      ? `1.5px solid ${m.color}`
-                      : "1.5px solid #E5DDD5",
-                }}
-                type="button"
-              >
-                <span className="text-xl">{m.icon}</span>
-
-                <span
-                  className="text-xs font-semibold"
-                  style={{
-                    color: selectedMood === m.id ? "#3D3530" : "#9A8F87",
-                    fontSize: "10px",
-                  }}
-                >
-                  {m.label}
-                </span>
-              </button>
-            ))}
           </div>
         </div>
       </div>

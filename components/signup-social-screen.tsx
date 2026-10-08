@@ -8,7 +8,7 @@ import { apiClient } from "@/lib/api"
 import {
   clearSignupDraft,
   getSignupDraft,
-  storeAccessToken,
+  storeTokens,
 } from "@/lib/auth-storage"
 import { createOAuthState } from "@/lib/oauth-state"
 
@@ -160,7 +160,7 @@ export default function SignupSocialScreen() {
             return
           }
 
-          storeAccessToken(oauthResult.access_token, true)
+          storeTokens(oauthResult.access_token, oauthResult.refresh_token, true)
 
           // 인증 직후 사용자 정보 확인
           await apiClient.getMe()

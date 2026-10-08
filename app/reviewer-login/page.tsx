@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 import { apiClient, ApiError } from "@/lib/api"
-import { storeAccessToken, clearSignupDraft } from "@/lib/auth-storage"
+import { storeTokens, clearSignupDraft } from "@/lib/auth-storage"
 
 export default function ReviewerLoginPage() {
   const [email, setEmail] = useState("")
@@ -26,7 +26,7 @@ export default function ReviewerLoginPage() {
         return
       }
 
-      storeAccessToken(result.access_token, true)
+      storeTokens(result.access_token, result.refresh_token, true)
       clearSignupDraft()
 
       window.location.replace("/home")

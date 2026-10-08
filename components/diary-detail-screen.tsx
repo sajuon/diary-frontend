@@ -109,6 +109,13 @@ export default function DiaryDetailScreen({
     })
   }
 
+  const handleEditDiary = () => {
+    onNavigate("diary", {
+      date: targetDate,
+      diary_type: isQuestionDiary ? "question" : "free",
+    })
+  }
+
   return (
     <div
       className="flex h-full flex-col font-sans"
@@ -230,6 +237,20 @@ export default function DiaryDetailScreen({
               {diary.content}
             </p>
           </div>
+
+          <button
+            onClick={handleEditDiary}
+            className="mt-3 w-full rounded-2xl py-3.5 text-sm font-extrabold transition-all active:scale-[0.98]"
+            style={{
+              background: "#FFFCF8",
+              color: "#6B6059",
+              border: "1.5px solid #E5DDD5",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            }}
+            type="button"
+          >
+            ✏️ 일기 수정하기
+          </button>
         </div>
 
         {!isQuestionDiary && (

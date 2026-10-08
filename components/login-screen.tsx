@@ -6,7 +6,7 @@ import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
-import { clearSignupDraft, storeAccessToken } from "@/lib/auth-storage"
+import { clearSignupDraft, storeTokens } from "@/lib/auth-storage"
 import { createOAuthState, parseOAuthState } from "@/lib/oauth-state"
 
 type Provider = "kakao" | "google"
@@ -169,8 +169,9 @@ export default function LoginScreen() {
             typeof event.data.state === "string" ? event.data.state : ""
           )
 
-          storeAccessToken(
+                    storeTokens(
             oauthResult.access_token,
+            oauthResult.refresh_token,
             statePayload?.rememberMe ?? rememberMe
           )
 

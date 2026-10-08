@@ -3,7 +3,10 @@
 import {
   clearAccessToken,
   getStoredAccessToken,
+  getStoredRefreshToken,
+  isRememberMeEnabled,
   storeAccessToken,
+  storeRefreshToken,
 } from "@/lib/auth-storage"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
@@ -16,6 +19,12 @@ export class ApiError extends Error {
     this.name = "ApiError"
     this.status = status
   }
+}
+
+export type AuthTokenResponse = {
+  access_token: string
+  refresh_token?: string | null
+  token_type?: string
 }
 
 type BirthProfilePayload = {
@@ -154,10 +163,17 @@ class ApiClient {
 
     this.refreshPromise = (async () => {
       try {
+        // TWA에서는 카카오 OAuth 왕복 중 refresh 쿠키가 유실되므로
+        // 스토리지에 보관해둔 토큰을 바디로 함께 보낸다.
+        const storedRefresh = getStoredRefreshToken()
+
         const response = await fetch(`${this.baseURL}/api/auth/refresh`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            storedRefresh ? { refresh_token: storedRefresh } : {}
+          ),
         })
 
         if (!response.ok) {
@@ -172,7 +188,12 @@ class ApiClient {
           return null
         }
 
-        storeAccessToken(data.access_token, true)
+        const remember = isRememberMeEnabled()
+        storeAccessToken(data.access_token, remember)
+        if (data.refresh_token) {
+          storeRefreshToken(data.refresh_token, remember)
+        }
+
         return data.access_token
       } catch {
         clearAccessToken()
@@ -266,17 +287,17 @@ class ApiClient {
   }
 
   async login(email: string, password: string) {
-    return this.post<{ access_token: string; token_type?: string }>(
-      "/api/auth/login",
-      { username: email, password }
-    )
+    return this.post<AuthTokenResponse>("/api/auth/login", {
+      username: email,
+      password,
+    })
   }
 
   async reviewerLogin(email: string, password: string) {
-    return this.post<{ access_token: string; token_type?: string }>(
-      "/api/auth/reviewer-login",
-      { username: email, password }
-    )
+    return this.post<AuthTokenResponse>("/api/auth/reviewer-login", {
+      username: email,
+      password,
+    })
   }
 
   async oauthLogin(
@@ -284,25 +305,30 @@ class ApiClient {
     code: string,
     redirectUri: string
   ) {
-    return this.post<{ access_token: string; token_type?: string }>(
-      "/api/auth/oauth/exchange",
-      {
-        provider,
-        code,
-        redirect_uri: redirectUri,
-      }
-    )
+    return this.post<AuthTokenResponse>("/api/auth/oauth/exchange", {
+      provider,
+      code,
+      redirect_uri: redirectUri,
+    })
   }
 
   async refresh() {
-    return this.post<{ access_token: string; token_type?: string }>(
-      "/api/auth/refresh"
+    const storedRefresh = getStoredRefreshToken()
+
+    return this.post<AuthTokenResponse>(
+      "/api/auth/refresh",
+      storedRefresh ? { refresh_token: storedRefresh } : {}
     )
   }
 
   async logout() {
+    const storedRefresh = getStoredRefreshToken()
+
     try {
-      await this.post<{ message: string }>("/api/auth/logout")
+      await this.post<{ message: string }>(
+        "/api/auth/logout",
+        storedRefresh ? { refresh_token: storedRefresh } : {}
+      )
     } finally {
       clearAccessToken()
     }
