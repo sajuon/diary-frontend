@@ -16,11 +16,11 @@ export type HaedoriPose = "stand" | "sit" | "lie" | "read" | "water" | "look"
 
 export const HAEDORI_POSES: Record<HaedoriPose, { image?: string; scale?: number }> = {
   stand: {},
-  sit: { scale: 0.9 },
-  lie: { scale: 0.9 },
-  read: {},
-  water: {},
-  look: {},
+  sit: { image: "/images/haedori-poses/sit.png" },
+  lie: { image: "/images/haedori-poses/lie.png" },
+  read: { image: "/images/haedori-poses/read.png" },
+  water: { image: "/images/haedori-poses/water.png" },
+  look: { image: "/images/haedori-poses/look.png" },
 }
 
 export const HAEDORI_DEFAULT_IMAGE = "/images/haedori-body.png"

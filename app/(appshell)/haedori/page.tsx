@@ -377,8 +377,10 @@ export default function HaedoriPage() {
             }}
           />
         </div>
-        {/* 지금 하는 일 표시 (자세 그림이 생기면 없어도 됨) */}
-        {action && !walkMs && (
+        {/* 지금 하는 일 표시. 자세 그림이 있으면 생략하되, 뭘 보는지(look)·자는지(lie)는 계속 보여준다 */}
+        {action &&
+          !walkMs &&
+          (!HAEDORI_POSES[action.pose].image || action.pose === "look" || action.pose === "lie") && (
           <span
             className="haedori-action-pop pointer-events-none absolute right-6 top-4 flex h-9 w-9 items-center justify-center rounded-full text-lg"
             style={{ background: "rgba(255,252,248,0.95)", boxShadow: "0 3px 10px rgba(61,53,48,0.15)" }}

@@ -37,6 +37,10 @@ CATALOG = ROOT / "lib" / "room-items.ts"
 POSE_DIR = ROOT / "public" / "images" / "haedori-poses"
 POSE_CATALOG = ROOT / "lib" / "haedori-actions.ts"
 POSE_PREFIX = "pose_"
+BODY_IMAGE = ROOT / "public" / "images" / "haedori-body.png"
+# 서 있는 자세: 키(높이)를 기본 해도리와 맞추는 기준으로 쓴다
+STANDING_POSES = {"stand", "look", "read", "water"}
+POSE_OUT_SCALE = 0.5  # 기본 해도리 캔버스(1024x1536)의 절반 크기로 저장
 
 MAX_SIDE = 600
 PADDING = 6          # 자른 뒤 남길 여백(px)
@@ -62,10 +66,43 @@ def register_pose(name: str) -> None:
     m = pattern.search(text)
     if not m:
         raise ValueError(f"lib/haedori-actions.ts 에서 '{name}' 자세 줄을 못 찾았어요")
-    rest = re.sub(r'\s*image: "[^"]*",?', "", m.group(2)).strip().strip(",").strip()
+    # 그림이 생기면 임시로 쓰던 scale은 뺀다 (그림 자체가 자세 크기를 가짐)
+    rest = re.sub(r'\s*(image: "[^"]*"|scale: [\d.]+),?', "", m.group(2)).strip().strip(",").strip()
     inner = f'image: "/images/haedori-poses/{name}.png"' + (f", {rest}" if rest else "")
     line = f"{m.group(1)} {inner} }},"
     POSE_CATALOG.write_text(text[: m.start()] + line + text[m.end():], encoding="utf-8")
+
+
+def defringe(im: Image.Image) -> Image.Image:
+    """AI 투명 배경 가장자리에 남는 붉은 테두리를 정리한다."""
+    a = np.asarray(im.convert("RGBA")).copy()
+    alpha = a[..., 3]
+    a[alpha < 16, 3] = 0
+    faint = (alpha >= 16) & (alpha < 60)
+    a[faint, 0:3] = (140, 91, 62)  # 외곽선 갈색
+    return Image.fromarray(a, "RGBA")
+
+
+def body_layout() -> tuple[Image.Image, tuple[int, int, int, int]]:
+    body = Image.open(BODY_IMAGE).convert("RGBA")
+    return body, body.getchannel("A").point(lambda v: 255 if v > 12 else 0).getbbox()
+
+
+def place_on_body_canvas(char: Image.Image, scale: float) -> Image.Image:
+    """
+    자세 그림을 기본 해도리 그림과 같은 캔버스·같은 키 기준으로 놓는다.
+    앱에서 기본 그림과 똑같은 크기 상자에 그려도 해도리 크기와 발 위치가 맞는다.
+    """
+    body, (bl, bt, br, bb) = body_layout()
+    s = POSE_OUT_SCALE
+    canvas = Image.new("RGBA", (round(body.width * s), round(body.height * s)), (0, 0, 0, 0))
+    char = char.resize((max(1, round(char.width * scale * s)), max(1, round(char.height * scale * s))), Image.LANCZOS)
+    center_x = (bl + br) / 2 * s
+    left = round(center_x - char.width / 2)
+    left = min(max(0, left), canvas.width - char.width)  # 옆으로 긴 그림(눕기)도 안 잘리게
+    top = round(bb * s) - char.height  # 발끝 = 기본 해도리 발끝
+    canvas.alpha_composite(char, (left, max(0, top)))
+    return canvas
 
 
 def remove_background(im: Image.Image) -> Image.Image:
@@ -137,6 +174,48 @@ def register(key: str, aspect: float) -> None:
     CATALOG.write_text(text[: m.start()] + line + text[m.end():], encoding="utf-8")
 
 
+def process_poses(pose_files: list[Path], poses: set[str], dry: bool) -> None:
+    """
+    자세 그림들을 한 번에 처리한다.
+    서 있는 자세들의 키 높이 중간값을 기본 해도리 키와 맞추는 배율로 쓰고,
+    같은 배율을 앉기·눕기에도 적용한다 (같은 대화에서 뽑은 그림은 캐릭터 크기가 거의 같음).
+    """
+    chars: dict[str, Image.Image] = {}
+    for f in pose_files:
+        pose = f.stem[len(POSE_PREFIX):]
+        if pose not in poses:
+            print(f"[skip] {f.name}: 없는 자세예요 (가능: {', '.join(sorted(poses))})")
+            continue
+        try:
+            chars[pose] = trim(defringe(remove_background(Image.open(f))))
+        except Exception as e:  # noqa: BLE001
+            print(f"[fail] {f.name}: {e}")
+    if not chars:
+        return
+
+    _, (_, bt, _, bb) = body_layout()
+    body_h = bb - bt
+    standing = sorted(im.height for p, im in chars.items() if p in STANDING_POSES)
+    if standing:
+        ref_h = standing[len(standing) // 2]
+    else:
+        # 서 있는 자세가 없으면 앉기 그림 키를 서 있는 키의 85%로 본다
+        ref_h = max(im.height for im in chars.values()) / 0.85
+    scale = body_h / ref_h
+    print(f"[pose] 배율 {scale:.3f} (기본 해도리 키 {body_h}px / 서 있는 자세 키 {ref_h}px)")
+
+    for pose, char in chars.items():
+        out_im = place_on_body_canvas(char, scale)
+        if dry:
+            print(f"[dry-run] pose {pose}: 캔버스 {out_im.width}x{out_im.height}")
+            continue
+        POSE_DIR.mkdir(parents=True, exist_ok=True)
+        out = POSE_DIR / f"{pose}.png"
+        out_im.save(out, optimize=True)
+        register_pose(pose)
+        print(f"[ok] pose {pose}: {out.relative_to(ROOT)} {out.stat().st_size // 1024}KB")
+
+
 def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     dry = "--dry-run" in sys.argv
@@ -153,27 +232,13 @@ def main() -> None:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     poses = known_poses()
+    pose_files = [f for f in files if f.stem.startswith(POSE_PREFIX)]
+    files = [f for f in files if not f.stem.startswith(POSE_PREFIX)]
+    if pose_files:
+        process_poses(pose_files, poses, dry)
+
     for f in files:
         key = f.stem
-        if key.startswith(POSE_PREFIX):
-            pose = key[len(POSE_PREFIX):]
-            if pose not in poses:
-                print(f"[skip] {f.name}: 없는 자세예요 (가능: {', '.join(sorted(poses))})")
-                continue
-            try:
-                im = fit(trim(remove_background(Image.open(f))))
-            except Exception as e:  # noqa: BLE001
-                print(f"[fail] {f.name}: {e}")
-                continue
-            if dry:
-                print(f"[dry-run] pose {pose}: {im.width}x{im.height}")
-                continue
-            POSE_DIR.mkdir(parents=True, exist_ok=True)
-            out = POSE_DIR / f"{pose}.png"
-            im.save(out, optimize=True)
-            register_pose(pose)
-            print(f"[ok] pose {pose}: {out.relative_to(ROOT)} {im.width}x{im.height}")
-            continue
         if key not in keys:
             print(f"[skip] {f.name}: lib/room-items.ts 에 없는 키예요 (가능: {', '.join(sorted(keys))})")
             continue
