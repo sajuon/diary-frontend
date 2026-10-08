@@ -378,13 +378,13 @@ export default function HomeScreen({
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => onNavigate("pearl-shop")}
+              onClick={() => onNavigate("shop")}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
               style={{
                 background: "#FFFCF8",
                 border: "1.5px solid #E5DDD5",
               }}
-              aria-label="진주 상점 열기"
+              aria-label="해도리 상점 열기"
             >
               <div
                 className="w-4 h-4 rounded-full"

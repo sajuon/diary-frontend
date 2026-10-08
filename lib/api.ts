@@ -12,6 +12,13 @@ import type { PearlReward } from "@/lib/pearl-events"
 
 export type { PearlReward }
 
+export type RoomState = {
+  theme_key: string
+  owned_theme_keys: string[]
+  letter_paper_key: string
+  owned_letter_paper_keys: string[]
+}
+
 export type LetterFeedback = {
   letter_id: number
   rating: "like" | "dislike"
@@ -508,14 +515,17 @@ class ApiClient {
   // ===== 해도리 방 =====
 
   async getRoom() {
-    return this.get<{ theme_key: string; owned_theme_keys: string[] }>("/api/room")
+    return this.get<RoomState>("/api/room")
   }
 
   async setRoomTheme(themeKey: string) {
-    return this.put<{ theme_key: string; owned_theme_keys: string[] }>(
-      "/api/room/theme",
-      { theme_key: themeKey }
-    )
+    return this.put<RoomState>("/api/room/theme", { theme_key: themeKey })
+  }
+
+  async setLetterPaper(letterPaperKey: string) {
+    return this.put<RoomState>("/api/room/letter-paper", {
+      letter_paper_key: letterPaperKey,
+    })
   }
 
   async getShopItems(itemType?: string) {

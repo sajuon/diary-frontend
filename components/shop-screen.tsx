@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useUserPearls } from "../hooks/use-user-pearls"
 import { apiClient } from "@/lib/api"
 import { notifyPearlBalance } from "@/lib/pearl-events"
+import CustomizationShop from "@/components/customization-shop"
 
 const FORTUNE_COOKIE_PRICE = 5
 
@@ -15,8 +16,7 @@ interface ShopScreenProps {
 }
 
 const categories = [
-  { id: "wallpaper", label: "벽지", icon: "🖼️" },
-  { id: "floor", label: "바닥", icon: "🪵" },
+  { id: "theme", label: "방 테마", icon: "🏠" },
   { id: "furniture", label: "가구", icon: "🛋️" },
   { id: "food", label: "간식", icon: "🍰" },
   { id: "deco", label: "소품", icon: "🪴" },
@@ -25,23 +25,9 @@ const categories = [
 type CategoryId = (typeof categories)[number]["id"]
 
 const shopItems: Record<
-  CategoryId,
+  Exclude<CategoryId, "theme">,
   Array<{ id: string; name: string; pearls: number; bg: string; emoji: string }>
 > = {
-  wallpaper: [
-    { id: "wp1", name: "벚꽃 벽지", pearls: 150, bg: "#F0C4C4", emoji: "🌸" },
-    { id: "wp2", name: "민트 스트라이프", pearls: 200, bg: "#B8D8C8", emoji: "〰️" },
-    { id: "wp3", name: "해달 패턴", pearls: 300, bg: "#F2C4A8", emoji: "🦦" },
-    { id: "wp4", name: "밤하늘 벽지", pearls: 350, bg: "#A8BBA5", emoji: "⭐" },
-    { id: "wp5", name: "레몬 도트", pearls: 180, bg: "#F4E8A8", emoji: "🍋" },
-    { id: "wp6", name: "구름 패턴", pearls: 220, bg: "#C8D8E8", emoji: "☁️" },
-  ],
-  floor: [
-    { id: "fl1", name: "원목 마루", pearls: 200, bg: "#D4B8A8", emoji: "🪵" },
-    { id: "fl2", name: "체크 카펫", pearls: 280, bg: "#F0C4C4", emoji: "🟪" },
-    { id: "fl3", name: "대리석 타일", pearls: 400, bg: "#E8E4E0", emoji: "◻️" },
-    { id: "fl4", name: "잔디 카펫", pearls: 250, bg: "#A8BBA5", emoji: "🌿" },
-  ],
   furniture: [
     { id: "fn1", name: "원목 책상", pearls: 300, bg: "#D4B8A8", emoji: "🪑" },
     { id: "fn2", name: "빈백 소파", pearls: 350, bg: "#F2C4A8", emoji: "🛋️" },
@@ -191,7 +177,7 @@ function EffectChips({ effects }: { effects: Partial<Record<Trait, number>> }) {
 }
 
 export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopScreenProps) {
-  const [activeCategory, setActiveCategory] = useState<CategoryId>("furniture")
+  const [activeCategory, setActiveCategory] = useState<CategoryId>("theme")
 
   const pearls = useUserPearls()
   const [localPearls, setLocalPearls] = useState<number>(pearls ?? 0)
@@ -200,7 +186,7 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
     if (typeof pearls === "number") setLocalPearls(pearls)
   }, [pearls])
 
-  const items = shopItems[activeCategory] || []
+  const items = activeCategory === "theme" ? [] : shopItems[activeCategory] || []
   const ownedBackendIds = useMemo(() => extractOwnedBackendIds(purchases), [purchases])
 
   const [infoOpen, setInfoOpen] = useState(false)
@@ -411,6 +397,9 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 pb-8">
+        {activeCategory === "theme" ? (
+          <CustomizationShop kind="theme" />
+        ) : (
         <div className="grid grid-cols-2 gap-3">
           {items.map((item) => {
             const backendId = backendItemIdMap[item.id]
@@ -512,6 +501,7 @@ export default function ShopScreen({ onNavigate, purchases, onPurchase }: ShopSc
             )
           })}
         </div>
+        )}
       </div>
 
       {infoOpen && infoSnackId && (

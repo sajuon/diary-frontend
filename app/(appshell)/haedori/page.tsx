@@ -48,9 +48,9 @@ export default function HaedoriPage() {
   }
 
   const menuItems = [
-    { label: "간식상점", image: "/images/icons/snackmarket.png", path: "/shop" },
+    { label: "해도리 상점", image: "/images/icons/snackmarket.png", path: "/shop" },
     { label: "해도리 답장", image: "/images/icons/mailbox.png", path: "/letterbox" },
-    { label: "진주상점", image: "/images/icons/pearlshop.png", path: "/pearl-shop" },
+    { label: "편지지 상점", image: "/images/icons/pearlshop.png", path: "/letter-shop" },
   ]
 
   return (

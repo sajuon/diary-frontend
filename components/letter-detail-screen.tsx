@@ -1,7 +1,8 @@
 //변환 끝
 "use client"
 
-import { useState } from "react"
+import LetterActions from "@/components/letter-actions"
+import AppliedLetterPaper, { LetterText } from "@/components/letter-paper"
 
 interface LetterApiResponse {
   id: number
@@ -11,6 +12,7 @@ interface LetterApiResponse {
   content: string
   element_hint?: Record<string, unknown> | null
   model?: string | null
+  is_favorite?: boolean
   created_at: string
   updated_at: string
 }
@@ -31,9 +33,6 @@ export default function LetterDetailScreen({
   onNavigate,
   letter,
 }: LetterDetailScreenProps) {
-  const [starred, setStarred] = useState(false)
-  const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
-
   if (!letter) {
     return (
       <div
@@ -104,118 +103,11 @@ export default function LetterDetailScreen({
           </div>
         </div>
 
-        <div
-          className="px-5 py-6 rounded-3xl"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
-          }}
-        >
-          <p
-            className="text-sm font-sans leading-loose whitespace-pre-line"
-            style={{ color: "#3D3530", lineHeight: "1.9" }}
-          >
-            {letter.content}
-          </p>
-        </div>
+        <AppliedLetterPaper>
+          <LetterText>{letter.content}</LetterText>
+        </AppliedLetterPaper>
 
-        <div
-          className="px-5 py-5 rounded-3xl"
-          style={{
-            background: "#FFFCF8",
-            border: "1.5px solid #E5DDD5",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          }}
-        >
-          <button
-            onClick={() => setStarred((s) => !s)}
-            className="flex items-center gap-3 w-full mb-4 transition-all active:scale-[0.97]"
-            aria-label={starred ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
-          >
-            <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all"
-              style={{ background: starred ? "#FFF3D0" : "#EDE8E0" }}
-            >
-              {starred ? (
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="#F4C97A"
-                  stroke="#C9A060"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              ) : (
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#9A8F87"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              )}
-            </div>
-            <span
-              className="text-sm font-semibold"
-              style={{ color: starred ? "#C9A060" : "#6B6059" }}
-            >
-              {starred ? "즐겨찾기에 추가됨" : "즐겨찾기"}
-            </span>
-          </button>
-
-          <div className="mb-4" style={{ height: "1px", background: "#F0EAE4" }} />
-
-          <p className="text-xs font-semibold mb-3 text-center" style={{ color: "#9A8F87" }}>
-            이 편지는 도움이 되었나요?
-          </p>
-
-          <div className="flex gap-3 justify-center mb-3">
-            <button
-              onClick={() => setFeedback(feedback === "like" ? null : "like")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
-              style={{
-                background: feedback === "like" ? "#D4EACF" : "#EDE8E0",
-                border: feedback === "like" ? "1.5px solid #A8BBA5" : "1.5px solid transparent",
-              }}
-              aria-pressed={feedback === "like"}
-            >
-              좋아요
-            </button>
-
-            <button
-              onClick={() => setFeedback(feedback === "dislike" ? null : "dislike")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all active:scale-95"
-              style={{
-                background: feedback === "dislike" ? "#FDDDD8" : "#EDE8E0",
-                border: feedback === "dislike" ? "1.5px solid #F2A8A8" : "1.5px solid transparent",
-              }}
-              aria-pressed={feedback === "dislike"}
-            >
-              아쉬워요
-            </button>
-          </div>
-
-          <p
-            className="text-center text-xs leading-relaxed"
-            style={{ color: "#C4B8B0" }}
-          >
-            여러분의 선택은 더 좋은 해도리를
-            <br />
-            만드는 데 사용됩니다.
-          </p>
-        </div>
+        <LetterActions letter={letter} />
       </div>
     </div>
   )
