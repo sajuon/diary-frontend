@@ -26,7 +26,7 @@ interface FortuneCookieModalProps {
 }
 
 const MIN_SHAKE_MS = 900
-const CRACK_MS = 1700
+const CRACK_MS = 1300
 
 const COOKIE_SRC = "/fortune-cookie/cookie.png"
 const SLIP_SRC = "/fortune-cookie/slip.png"
@@ -104,7 +104,7 @@ export default function FortuneCookieModal({
         </p>
 
         <div className={stageClass} aria-live="polite">
-          {/* 쪽지: 처음엔 쿠키 틈에 세로로 꽂혀 있다가, 갈라지면 위로 빠져나와 펼쳐진다 */}
+          {/* 쪽지: 쿠키가 좌우로 벌어지면 그 사이에서 가로로 길게 나온다 */}
           <div className="fc-slip" style={{ backgroundImage: `url(${SLIP_SRC})` }}>
             <p className="fc-slip-text">{result?.message ?? ""}</p>
           </div>
@@ -216,14 +216,15 @@ export default function FortuneCookieModal({
           pointer-events: none;
           transition: transform 0.6s cubic-bezier(.2,.9,.3,1.15);
         }
-        /* 접힌 선(가로 50%)을 기준으로 자르고, 선 아래 끝(세로 62%)을 축으로 벌린다 */
-        .fc-left  { clip-path: inset(0 50% 0 0); transform-origin: 50% 62%; }
-        .fc-right { clip-path: inset(0 0 0 50%); transform-origin: 50% 62%; }
+        /* 접힌 선(가로 50%)을 기준으로 좌우를 자른다 */
+        .fc-left  { clip-path: inset(0 50% 0 0); }
+        .fc-right { clip-path: inset(0 0 0 50%); }
 
         .fc-idle .fc-wobble { animation: fcBob 2.4s ease-in-out infinite; }
         .fc-shaking .fc-wobble { animation: fcShake 0.4s ease-in-out infinite; }
-        .fc-cracking .fc-left, .fc-revealed .fc-left { transform: translate(-22px, 10px) rotate(-16deg); }
-        .fc-cracking .fc-right, .fc-revealed .fc-right { transform: translate(22px, 10px) rotate(16deg); }
+        /* 그림 그대로 좌우로만 벌어진다 */
+        .fc-cracking .fc-left, .fc-revealed .fc-left { transform: translateX(-48px); }
+        .fc-cracking .fc-right, .fc-revealed .fc-right { transform: translateX(48px); }
         .fc-replay .fc-half { transition: none; }
 
         .fc-crumbs { position: absolute; left: 50%; top: 40%; pointer-events: none; }
@@ -241,7 +242,7 @@ export default function FortuneCookieModal({
         .fc-slip {
           position: absolute;
           left: 50%;
-          top: 40px;
+          top: 120px;
           width: 270px;
           min-height: 69px;
           margin-left: -135px;
@@ -251,12 +252,14 @@ export default function FortuneCookieModal({
           justify-content: center;
           background-size: 100% 100%;
           background-repeat: no-repeat;
-          z-index: 1;
-          /* 처음 위치: 쿠키 접힌 틈에 세로로 꽂혀 위쪽 끝만 보임 */
-          transform: translateY(38px) rotate(90deg) scale(0.42);
+          z-index: 3;
+          pointer-events: none;
+          /* 처음엔 숨어 있다가, 쿠키가 벌어진 사이에서 가로로 길게 나온다 */
+          opacity: 0;
+          transform: scaleX(0.04);
         }
-        .fc-cracking .fc-slip { animation: fcSlipOut 1.1s 0.25s ease-in-out forwards; }
-        .fc-revealed .fc-slip { z-index: 3; transform: translateY(0) rotate(0deg) scale(1); }
+        .fc-cracking .fc-slip { animation: fcSlipOut 0.8s 0.4s cubic-bezier(.2,.8,.3,1) forwards; }
+        .fc-revealed .fc-slip { opacity: 1; transform: scaleX(1); }
 
         .fc-slip-text {
           margin: 0;
@@ -286,12 +289,9 @@ export default function FortuneCookieModal({
           0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
           100% { opacity: 0; transform: translate(calc((var(--i) - 2.5) * 18px), 90px) rotate(140deg); }
         }
-        /* 틈에서 위로 쑥 빠져나온 뒤, 앞으로 나오면서 가로로 펼쳐진다 */
         @keyframes fcSlipOut {
-          0%   { z-index: 1; transform: translateY(38px) rotate(90deg) scale(0.42); }
-          45%  { z-index: 1; transform: translateY(-10px) rotate(90deg) scale(0.42); }
-          46%  { z-index: 3; }
-          100% { z-index: 3; transform: translateY(0) rotate(0deg) scale(1); }
+          0%   { opacity: 1; transform: scaleX(0.04); }
+          100% { opacity: 1; transform: scaleX(1); }
         }
         @keyframes fcFade { to { opacity: 1; } }
         @keyframes fcPop {
