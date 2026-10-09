@@ -71,6 +71,23 @@ export type LetterFeedback = {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
 
+export type TodayFortuneCookie = {
+  kind: "free" | "paid"
+  reward: number
+  is_jackpot: boolean
+  message: string
+}
+
+export type FortuneCookieResult = TodayFortuneCookie & { price: number; balance: number }
+
+export type FortuneCookieInfo = {
+  price: number
+  table: Array<{ amount: number; chance: number }>
+  free_table: Array<{ amount: number; chance: number }>
+  today_free: TodayFortuneCookie | null
+  today_paid: TodayFortuneCookie | null
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -610,15 +627,17 @@ class ApiClient {
   }
 
   async getFortuneCookieInfo() {
-    return this.get<{ price: number; table: Array<{ amount: number; chance: number }> }>(
-      "/api/pearls/fortune-cookie"
-    )
+    return this.get<FortuneCookieInfo>("/api/pearls/fortune-cookie")
   }
 
+  /** 상점 포춘쿠키: 5진주, 하루 1개 */
   async buyFortuneCookie() {
-    return this.post<{ price: number; reward: number; is_jackpot: boolean; balance: number }>(
-      "/api/pearls/fortune-cookie"
-    )
+    return this.post<FortuneCookieResult>("/api/pearls/fortune-cookie")
+  }
+
+  /** 오늘의 포춘쿠키: 무료, 하루 1개 */
+  async openFreeFortuneCookie() {
+    return this.post<FortuneCookieResult>("/api/pearls/fortune-cookie/free")
   }
 
   // ===== 편지 피드백 =====
