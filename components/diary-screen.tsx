@@ -1,7 +1,7 @@
 // /home/dori/diary-frontend/components/diary-screen.tsx
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
@@ -33,6 +33,15 @@ interface DiaryScreenProps {
 }
 
 type DiaryType = "question" | "free"
+
+// 탭(질문형/자유형)별로 화면에 입력 중인 상태를 보관한다.
+// 탭을 바꿔도 저장 안 한 글이 서버 내용으로 덮어써지지 않게 하기 위함.
+type TabForm = {
+  text: string
+  weather: WeatherKey
+  mood: EmotionKey
+  isEdit: boolean
+}
 
 type DiarySaveResponse = {
   id?: number
@@ -114,6 +123,26 @@ export default function DiaryScreen({
 
   const typeLabel = activeTab === "question" ? "질문형" : "자유형"
 
+  // key: `${날짜}:${탭}` → 그 탭에서 입력 중이던 내용
+  const tabFormsRef = useRef<Record<string, TabForm>>({})
+  const formKey = (tab: DiaryType) => `${selectedDate}:${tab}`
+
+  const switchTab = (nextTab: DiaryType) => {
+    if (nextTab === activeTab) return
+
+    // 불러오는 중이 아닐 때만 현재 탭 입력 상태를 보관 (불러오기 전 빈 화면을 저장하지 않게)
+    if (!fetching) {
+      tabFormsRef.current[formKey(activeTab)] = {
+        text,
+        weather: selectedWeather,
+        mood: selectedMood,
+        isEdit,
+      }
+    }
+
+    setActiveTab(nextTab)
+  }
+
   const resetForm = () => {
     setIsEdit(false)
     setText("")
@@ -132,6 +161,21 @@ export default function DiaryScreen({
   }, [initialDiaryType])
 
   useEffect(() => {
+    // 응답이 늦게 와서 이미 다른 탭으로 넘어간 경우, 그 응답으로 화면을 덮지 않는다
+    let cancelled = false
+
+    // 이 탭에서 입력하던 내용이 있으면 서버에서 다시 불러오지 않고 그대로 복원
+    const kept = tabFormsRef.current[`${selectedDate}:${activeTab}`]
+    if (kept) {
+      setText(kept.text)
+      setSelectedWeather(kept.weather)
+      setSelectedMood(kept.mood)
+      setIsEdit(kept.isEdit)
+      setError(null)
+      setFetching(false)
+      return
+    }
+
     async function fetchDiaryByType() {
       try {
         setFetching(true)
@@ -147,6 +191,8 @@ export default function DiaryScreen({
             activeTab
           )) as DiarySaveResponse
         }
+
+        if (cancelled) return
 
         setText(data.content || "")
 
@@ -164,6 +210,8 @@ export default function DiaryScreen({
 
         setIsEdit(true)
       } catch (e: any) {
+        if (cancelled) return
+
         const message = e?.message || ""
 
         if (
@@ -176,11 +224,15 @@ export default function DiaryScreen({
 
         setError(message || `${typeLabel} 일기를 불러오지 못했어요.`)
       } finally {
-        setFetching(false)
+        if (!cancelled) setFetching(false)
       }
     }
 
     fetchDiaryByType()
+
+    return () => {
+      cancelled = true
+    }
   }, [activeTab, selectedDate, isToday, typeLabel])
 
   useEffect(() => {
@@ -295,7 +347,7 @@ export default function DiaryScreen({
             {(["question", "free"] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => switchTab(tab)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all"
                 style={{
                   background: activeTab === tab ? "#FFFCF8" : "transparent",
