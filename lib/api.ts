@@ -8,6 +8,7 @@ import {
   storeAccessToken,
   storeRefreshToken,
 } from "@/lib/auth-storage"
+import { clearAllDrafts } from "@/lib/diary-draft"
 import type { PearlReward } from "@/lib/pearl-events"
 
 export type { PearlReward }
@@ -408,6 +409,8 @@ class ApiClient {
       )
     } finally {
       clearAccessToken()
+      // 공용 기기에서 다음 사용자에게 일기 초안이 남지 않게
+      clearAllDrafts()
     }
   }
 

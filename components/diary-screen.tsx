@@ -13,6 +13,13 @@ import {
   invalidateDiaryMonth,
 } from "@/lib/diary-cache"
 import {
+  loadDraft,
+  saveDraft,
+  removeDraft,
+  pruneOldDrafts,
+  type DiaryDraft,
+} from "@/lib/diary-draft"
+import {
   EmotionStonePicker,
   isEmotionKey,
   FALLBACK_EMOTION,
@@ -41,6 +48,28 @@ type TabForm = {
   weather: WeatherKey
   mood: EmotionKey
   isEdit: boolean
+}
+
+// 서버에서 불러온(또는 아직 없는) 일기 원본. 입력 내용이 바뀌었는지 비교하는 기준.
+type ServerBase = {
+  entryId: number | null
+  updatedAt: string | null
+  content: string
+  weather: string
+  mood: string
+}
+
+type DraftStatus = "idle" | "pending" | "saved" | "error"
+
+const AUTOSAVE_DELAY_MS = 2500
+
+function formatDraftTime(savedAt: number) {
+  const d = new Date(savedAt)
+  const hour = d.getHours()
+  const ampm = hour < 12 ? "오전" : "오후"
+  const h12 = hour % 12 === 0 ? 12 : hour % 12
+  const min = String(d.getMinutes()).padStart(2, "0")
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${ampm} ${h12}:${min}`
 }
 
 type DiarySaveResponse = {
@@ -127,8 +156,220 @@ export default function DiaryScreen({
   const tabFormsRef = useRef<Record<string, TabForm>>({})
   const formKey = (tab: DiaryType) => `${selectedDate}:${tab}`
 
+  // ---------- 자동 임시저장 ----------
+  const [userId, setUserId] = useState<string | null>(null)
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>("idle")
+  const [pendingDraft, setPendingDraft] = useState<{
+    draft: DiaryDraft
+    conflict: boolean
+  } | null>(null)
+
+  // key: `${날짜}:${탭}` → 서버 원본
+  const baseRef = useRef<Record<string, ServerBase>>({})
+  // 지금 화면의 입력 내용이 어느 날짜·탭의 것인지 (불러오는 중이면 null)
+  const formOwnerRef = useRef<{ date: string; tab: DiaryType } | null>(null)
+  // 복구 안내를 이미 확인한 날짜·탭
+  const draftCheckedRef = useRef<Set<string>>(new Set())
+  const submittedRef = useRef(false)
+
+  // 언마운트·백그라운드 전환 시점에 최신 값을 읽기 위한 ref
+  const latestRef = useRef({
+    text,
+    weather: selectedWeather as string,
+    mood: selectedMood as string,
+    userId,
+    pendingDraft,
+  })
+  latestRef.current = {
+    text,
+    weather: selectedWeather,
+    mood: selectedMood,
+    userId,
+    pendingDraft,
+  }
+
+  // 지금 입력 내용을 바로 기기에 저장 (원본과 같으면 초안 삭제)
+  const persistDraftNow = () => {
+    const { text: t, weather, mood, userId: uid, pendingDraft: pd } =
+      latestRef.current
+    const owner = formOwnerRef.current
+
+    if (!uid || !owner || submittedRef.current || pd) return
+
+    const base = baseRef.current[`${owner.date}:${owner.tab}`]
+    if (!base) return
+
+    const changed =
+      t !== base.content || weather !== base.weather || mood !== base.mood
+
+    if (!changed || !t.trim()) {
+      // 복구 안내 확인 전에는 지우지 않는다 (불러온 직후 초안이 삭제되는 것 방지)
+      if (draftCheckedRef.current.has(`${owner.date}:${owner.tab}`)) {
+        removeDraft(uid, owner.date, owner.tab)
+      }
+      setDraftStatus("idle")
+      return
+    }
+
+    const ok = saveDraft({
+      userId: uid,
+      entryDate: owner.date,
+      diaryType: owner.tab,
+      mode: base.entryId ? "edit" : "new",
+      entryId: base.entryId,
+      baseUpdatedAt: base.updatedAt,
+      content: t,
+      weather,
+      mood,
+    })
+
+    setDraftStatus(ok ? "saved" : "error")
+  }
+
+  const persistDraftRef = useRef(persistDraftNow)
+  persistDraftRef.current = persistDraftNow
+
+  // 사용자 ID 확보 (초안 키에 사용) + 오래된 초안 정리
+  useEffect(() => {
+    pruneOldDrafts()
+
+    let cancelled = false
+    apiClient
+      .getMe()
+      .then((me: any) => {
+        if (!cancelled && me?.id != null) setUserId(String(me.id))
+      })
+      .catch(() => {
+        // 사용자 정보를 못 받으면 임시저장 없이 기존처럼 동작
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // 입력을 멈추고 2.5초 지나면 저장
+  useEffect(() => {
+    const owner = formOwnerRef.current
+    if (!userId || fetching || pendingDraft || !owner) return
+    if (owner.date !== selectedDate || owner.tab !== activeTab) return
+
+    const base = baseRef.current[`${owner.date}:${owner.tab}`]
+    if (!base) return
+
+    const changed =
+      text !== base.content ||
+      selectedWeather !== base.weather ||
+      selectedMood !== base.mood
+
+    if (!changed) {
+      if (draftCheckedRef.current.has(`${owner.date}:${owner.tab}`)) {
+        removeDraft(userId, owner.date, owner.tab)
+      }
+      setDraftStatus("idle")
+      return
+    }
+
+    setDraftStatus("pending")
+    const timer = setTimeout(() => persistDraftRef.current(), AUTOSAVE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [
+    text,
+    selectedWeather,
+    selectedMood,
+    userId,
+    fetching,
+    pendingDraft,
+    activeTab,
+    selectedDate,
+  ])
+
+  // 앱이 백그라운드로 가거나 화면을 떠날 때 바로 저장
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") persistDraftRef.current()
+    }
+    const onPageHide = () => persistDraftRef.current()
+
+    document.addEventListener("visibilitychange", onHidden)
+    window.addEventListener("pagehide", onPageHide)
+
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden)
+      window.removeEventListener("pagehide", onPageHide)
+      // 다른 화면으로 이동(언마운트)할 때
+      persistDraftRef.current()
+    }
+  }, [])
+
+  // 불러오기가 끝나면 이 날짜·탭의 초안이 있는지 확인하고 복구 안내
+  useEffect(() => {
+    if (!userId || fetching) return
+
+    const key = `${selectedDate}:${activeTab}`
+    const owner = formOwnerRef.current
+    if (!owner || owner.date !== selectedDate || owner.tab !== activeTab) return
+    if (draftCheckedRef.current.has(key)) return
+
+    const base = baseRef.current[key]
+    if (!base) return
+
+    draftCheckedRef.current.add(key)
+
+    const draft = loadDraft(userId, selectedDate, activeTab)
+    if (!draft) return
+
+    const sameAsServer =
+      draft.content === base.content &&
+      draft.weather === base.weather &&
+      draft.mood === base.mood
+
+    if (sameAsServer || !draft.content.trim()) {
+      removeDraft(userId, selectedDate, activeTab)
+      return
+    }
+
+    // 초안을 만든 뒤 서버 일기가 새로 생겼거나 바뀐 경우
+    const conflict =
+      base.entryId != null &&
+      (draft.mode === "new" || draft.baseUpdatedAt !== base.updatedAt)
+
+    setPendingDraft({ draft, conflict })
+  }, [userId, fetching, activeTab, selectedDate])
+
+  const resumeDraft = () => {
+    if (!pendingDraft) return
+    const { draft } = pendingDraft
+
+    setText(draft.content)
+    setSelectedWeather(
+      isWeatherKey(draft.weather) ? draft.weather : FALLBACK_WEATHER
+    )
+    setSelectedMood(isEmotionKey(draft.mood) ? draft.mood : FALLBACK_EMOTION)
+    setPendingDraft(null)
+    setDraftStatus("saved")
+  }
+
+  const discardDraft = () => {
+    if (!pendingDraft) return
+    const { draft } = pendingDraft
+    removeDraft(draft.userId, draft.entryDate, draft.diaryType)
+    setPendingDraft(null)
+    setDraftStatus("idle")
+  }
+
   const switchTab = (nextTab: DiaryType) => {
     if (nextTab === activeTab) return
+
+    // 떠나는 탭의 입력 내용은 기기에도 바로 저장
+    persistDraftRef.current()
+    // 복구 안내에 답하지 않고 탭을 바꾸면, 돌아왔을 때 다시 물어본다
+    if (pendingDraft) {
+      draftCheckedRef.current.delete(`${selectedDate}:${activeTab}`)
+    }
+    formOwnerRef.current = null
+    setPendingDraft(null)
+    setDraftStatus("idle")
 
     // 불러오는 중이 아닐 때만 현재 탭 입력 상태를 보관 (불러오기 전 빈 화면을 저장하지 않게)
     if (!fetching) {
@@ -173,8 +414,11 @@ export default function DiaryScreen({
       setIsEdit(kept.isEdit)
       setError(null)
       setFetching(false)
+      formOwnerRef.current = { date: selectedDate, tab: activeTab }
       return
     }
+
+    formOwnerRef.current = null
 
     async function fetchDiaryByType() {
       try {
@@ -194,15 +438,25 @@ export default function DiaryScreen({
 
         if (cancelled) return
 
-        setText(data.content || "")
-
         // 구버전이나 알 수 없는 값이 들어와도 화면이 깨지지 않게 방어
-        setSelectedWeather(
-          isWeatherKey(data.weather) ? data.weather : FALLBACK_WEATHER
-        )
-
+        const loadedWeather = isWeatherKey(data.weather)
+          ? data.weather
+          : FALLBACK_WEATHER
         const savedMood = data.mood_tags?.[0]
-        setSelectedMood(isEmotionKey(savedMood) ? savedMood : FALLBACK_EMOTION)
+        const loadedMood = isEmotionKey(savedMood) ? savedMood : FALLBACK_EMOTION
+
+        baseRef.current[`${selectedDate}:${activeTab}`] = {
+          entryId: data.id ?? null,
+          updatedAt: data.updated_at ?? null,
+          content: data.content || "",
+          weather: loadedWeather,
+          mood: loadedMood,
+        }
+        formOwnerRef.current = { date: selectedDate, tab: activeTab }
+
+        setText(data.content || "")
+        setSelectedWeather(loadedWeather)
+        setSelectedMood(loadedMood)
 
         if (activeTab === "question" && data.question_text) {
           setQuestion(data.question_text)
@@ -218,6 +472,14 @@ export default function DiaryScreen({
           message.includes("일기가 없습니다") ||
           message.includes("HTTP 404")
         ) {
+          baseRef.current[`${selectedDate}:${activeTab}`] = {
+            entryId: null,
+            updatedAt: null,
+            content: "",
+            weather: FALLBACK_WEATHER,
+            mood: FALLBACK_EMOTION,
+          }
+          formOwnerRef.current = { date: selectedDate, tab: activeTab }
           resetForm()
           return
         }
@@ -291,6 +553,10 @@ export default function DiaryScreen({
         saved = (await apiClient.createDiary(payload)) as DiarySaveResponse
         handlePearlReward(saved)
       }
+
+      // 정식 저장 성공 → 이 날짜·탭의 임시저장 삭제, 화면을 떠날 때 다시 저장하지 않게 표시
+      if (userId) removeDraft(userId, selectedDate, activeTab)
+      submittedRef.current = true
 
       const entryDate: string = saved?.entry_date || selectedDate
       const monthKey = getDiaryMonthKeyFromDate(entryDate)
@@ -490,6 +756,52 @@ export default function DiaryScreen({
           </div>
         )}
 
+        {pendingDraft && (
+          <div
+            className="rounded-2xl px-4 py-3.5"
+            style={{
+              background: "#FFF3E8",
+              border: "1.5px solid #E5DDD5",
+            }}
+          >
+            <p className="text-sm font-extrabold" style={{ color: "#3D3530" }}>
+              작성 중인 일기를 이어 쓸까요?
+            </p>
+            <p className="text-xs mt-1" style={{ color: "#9A8F87" }}>
+              {formatDraftTime(pendingDraft.draft.savedAt)}에 임시저장된 글 ·{" "}
+              {pendingDraft.draft.content.length}자
+            </p>
+            {pendingDraft.conflict && (
+              <p className="text-xs mt-1 font-bold" style={{ color: "#C9856A" }}>
+                저장된 일기가 그 뒤에 바뀌었어요. 이어 쓰고 저장하면 지금 저장된
+                내용을 덮어써요.
+              </p>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                onClick={resumeDraft}
+                className="flex-1 py-2 rounded-xl text-sm font-extrabold transition-all active:scale-95"
+                style={{ background: "#C9856A", color: "#FFFCF8" }}
+              >
+                이어 쓰기
+              </button>
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+                style={{
+                  background: "#FFFCF8",
+                  color: "#9A8F87",
+                  border: "1.5px solid #E5DDD5",
+                }}
+              >
+                지우기
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="text-xs font-bold mb-2.5" style={{ color: "#9A8F87" }}>
             오늘의 날씨
@@ -498,7 +810,7 @@ export default function DiaryScreen({
           <WeatherTilePicker
             value={selectedWeather}
             onChange={setSelectedWeather}
-            disabled={fetching}
+            disabled={fetching || Boolean(pendingDraft)}
           />
         </div>
 
@@ -510,7 +822,7 @@ export default function DiaryScreen({
           <EmotionStonePicker
             value={selectedMood}
             onChange={setSelectedMood}
-            disabled={fetching}
+            disabled={fetching || Boolean(pendingDraft)}
           />
         </div>
 
@@ -525,6 +837,7 @@ export default function DiaryScreen({
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            disabled={Boolean(pendingDraft)}
             placeholder={
               activeTab === "question"
                 ? "질문에 대한 답을 솔직하게 적어봐요..."
@@ -538,7 +851,16 @@ export default function DiaryScreen({
             }}
           />
 
-          <div className="px-5 pb-3 flex justify-end">
+          <div className="px-5 pb-3 flex justify-between items-center">
+            <span
+              className="text-xs"
+              style={{ color: draftStatus === "error" ? "#D9534F" : "#C4B8B0" }}
+              aria-live="polite"
+            >
+              {draftStatus === "pending" && "저장 중..."}
+              {draftStatus === "saved" && "임시저장 완료"}
+              {draftStatus === "error" && "임시저장 실패"}
+            </span>
             <span className="text-xs" style={{ color: "#C4B8B0" }}>
               {text.length}자
             </span>
@@ -560,10 +882,23 @@ export default function DiaryScreen({
             background: "#C9856A",
             color: "#FFFCF8",
             boxShadow: "0 4px 16px rgba(201,133,106,0.35)",
-            opacity: loading || fetching || !text.trim() || !canEdit ? 0.6 : 1,
+            opacity:
+              loading ||
+              fetching ||
+              !text.trim() ||
+              !canEdit ||
+              Boolean(pendingDraft)
+                ? 0.6
+                : 1,
           }}
           onClick={handleSaveDiary}
-          disabled={loading || fetching || !text.trim() || !canEdit}
+          disabled={
+            loading ||
+            fetching ||
+            !text.trim() ||
+            !canEdit ||
+            Boolean(pendingDraft)
+          }
           type="button"
         >
           {loading
