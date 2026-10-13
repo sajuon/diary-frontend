@@ -1,7 +1,7 @@
 // /home/dori/diary-frontend/components/diary-detail-screen.tsx
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import LetterActions from "@/components/letter-actions"
 import AppliedLetterPaper, { LetterText } from "@/components/letter-paper"
 import {
@@ -10,6 +10,8 @@ import {
   FALLBACK_EMOTION,
   isEmotionKey,
 } from "@/components/emotion-stone"
+import { isLetterPendingDate } from "@/lib/diary-day"
+import type { LetterRegenerateInfo } from "@/lib/api"
 
 type DiaryType = "question" | "free"
 
@@ -59,15 +61,8 @@ interface DiaryDetailScreenProps {
   onDeleteDiary: () => Promise<void>
   onGenerateLetterWithPearl?: () => Promise<void>
   letterGenerating?: boolean
-}
-
-function getKstTodayDateString() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date())
+  onLoadRegenerateInfo?: () => Promise<LetterRegenerateInfo>
+  onRegenerateLetter?: (letterId: number) => Promise<void>
 }
 
 export default function DiaryDetailScreen({
@@ -77,7 +72,13 @@ export default function DiaryDetailScreen({
   letter,
   onGenerateLetterWithPearl,
   letterGenerating = false,
+  onLoadRegenerateInfo,
+  onRegenerateLetter,
 }: DiaryDetailScreenProps) {
+  const [regenInfo, setRegenInfo] = useState<LetterRegenerateInfo | null>(null)
+  const [regenLoading, setRegenLoading] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+
   const moodId = diary.mood_tags?.[0] || "calm"
   const currentMood = useMemo(
     () => EMOTION_MAP[isEmotionKey(moodId) ? moodId : FALLBACK_EMOTION],
@@ -90,9 +91,40 @@ export default function DiaryDetailScreen({
   const diaryTypeLabel = isQuestionDiary ? "질문형 일기" : "자유 일기"
 
   const targetDate = date || diary.entry_date
-  const isTodayDiary = targetDate === getKstTodayDateString()
+  // 오늘 일기, 또는 새벽 마감 전의 어제 일기 → 아직 자동 답장 전
+  const isTodayDiary = isLetterPendingDate(targetDate)
   const canRequestPastLetter =
     !isQuestionDiary && !isTodayDiary && Boolean(onGenerateLetterWithPearl)
+  const canRegenerate =
+    !isQuestionDiary &&
+    !isTodayDiary &&
+    Boolean(letter) &&
+    Boolean(onLoadRegenerateInfo && onRegenerateLetter)
+
+  const handleOpenRegenerate = async () => {
+    if (!onLoadRegenerateInfo) return
+    try {
+      setRegenLoading(true)
+      setRegenInfo(await onLoadRegenerateInfo())
+    } catch (error: any) {
+      alert(error?.message || "답장 정보를 불러오지 못했어요.")
+    } finally {
+      setRegenLoading(false)
+    }
+  }
+
+  const handleConfirmRegenerate = async () => {
+    if (!regenInfo || !onRegenerateLetter) return
+    try {
+      setRegenerating(true)
+      await onRegenerateLetter(regenInfo.letter_id)
+      setRegenInfo(null)
+    } catch (error: any) {
+      alert(error?.message || "답장을 다시 받지 못했어요.")
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   const handleOpenQuestionHistory = () => {
     onNavigate("question-history", {
@@ -318,9 +350,84 @@ export default function DiaryDetailScreen({
             </div>
 
             {letter && <LetterActions letter={letter} />}
+
+            {canRegenerate && (
+              <button
+                onClick={handleOpenRegenerate}
+                disabled={regenLoading || regenerating}
+                className="w-full rounded-2xl py-3.5 text-sm font-extrabold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  background: "#FFFCF8",
+                  color: "#C9856A",
+                  border: "1.5px solid rgba(201,133,106,0.22)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                }}
+                type="button"
+              >
+                {regenLoading ? "확인 중..." : "진주 3개로 답장 다시 받기"}
+              </button>
+            )}
           </>
         )}
       </div>
+
+      {regenInfo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          style={{ background: "rgba(61,53,48,0.4)" }}
+          onClick={() => !regenerating && setRegenInfo(null)}
+        >
+          <div
+            className="flex w-full max-w-xs flex-col gap-3 rounded-2xl bg-[#FFFCF8] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <h3 className="text-base font-bold" style={{ color: "#3D3530" }}>
+              {regenInfo.diary_modified
+                ? "수정한 일기로 답장을 다시 받을까요?"
+                : "일기를 수정하지 않았습니다. 재생성하시겠습니까?"}
+            </h3>
+
+            <p className="text-sm leading-relaxed" style={{ color: "#6B625C" }}>
+              기존 답장은 삭제되고 되돌릴 수 없어요.
+              <br />
+              즐겨찾기와 남긴 피드백도 함께 삭제돼요.
+            </p>
+
+            <p className="text-xs" style={{ color: "#9A8F87" }}>
+              진주 {regenInfo.cost}개 사용 · 보유 {regenInfo.pearls}개
+            </p>
+
+            {regenInfo.pearls < regenInfo.cost && (
+              <p className="text-xs font-bold" style={{ color: "#C9856A" }}>
+                진주가 부족해요.
+              </p>
+            )}
+
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={() => setRegenInfo(null)}
+                disabled={regenerating}
+                className="flex-1 rounded-xl py-3 text-sm font-bold disabled:opacity-60"
+                style={{ background: "#F3EEE8", color: "#6B6059" }}
+                type="button"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleConfirmRegenerate}
+                disabled={regenerating || regenInfo.pearls < regenInfo.cost}
+                className="flex-1 rounded-xl py-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ background: "#C9856A", color: "#FFFCF8" }}
+                type="button"
+              >
+                {regenerating ? "답장 쓰는 중..." : "다시 받기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes slideInRight {

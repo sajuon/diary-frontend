@@ -115,6 +115,15 @@ type BirthProfilePayload = {
 
 export type DiaryType = "question" | "free"
 
+export type LetterRegenerateInfo = {
+  letter_id: number
+  diary_entry_id: number
+  letter_date: string
+  diary_modified: boolean
+  cost: number
+  pearls: number
+}
+
 type DiaryPayload = {
   entry_date?: string
   content: string
@@ -524,6 +533,25 @@ class ApiClient {
     params.set("target_date", targetDate)
 
     return this.post(`/api/letters/generate-with-pearl?${params.toString()}`)
+  }
+
+  /** 답장 재생성 안내용: 기존 답장 이후 일기 수정 여부, 비용, 잔액 */
+  async getLetterRegenerateInfo(targetDate: string) {
+    const params = new URLSearchParams()
+    params.set("target_date", targetDate)
+
+    return this.get<LetterRegenerateInfo>(
+      `/api/letters/regenerate-info?${params.toString()}`
+    )
+  }
+
+  /** 기존 답장을 삭제하고 새 답장 생성 (진주 3개). letterId는 교체할 기존 답장 ID */
+  async regenerateLetter(targetDate: string, letterId: number) {
+    const params = new URLSearchParams()
+    params.set("target_date", targetDate)
+    params.set("letter_id", String(letterId))
+
+    return this.post(`/api/letters/regenerate?${params.toString()}`)
   }
 
   private getTodayDateString() {

@@ -5,6 +5,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import DiaryDetailScreen from "@/components/diary-detail-screen"
 import { apiClient, type DiaryType } from "@/lib/api"
+import { notifyPearlBalance } from "@/lib/pearl-events"
 
 interface DiaryDetailResponse {
   id: number
@@ -173,6 +174,7 @@ export default function DiaryDetailPage() {
       )) as LetterDetailResponse
 
       setLetter(generatedLetter)
+      await refreshPearlBalance()
 
       router.push(`/letter-detail/${generatedLetter.id}`)
     } catch (error: any) {
@@ -181,6 +183,28 @@ export default function DiaryDetailPage() {
     } finally {
       setLetterGenerating(false)
     }
+  }
+
+  const refreshPearlBalance = async () => {
+    try {
+      const me = (await apiClient.getMe()) as { pearls?: number }
+      if (typeof me?.pearls === "number") notifyPearlBalance(me.pearls)
+    } catch {
+      // 잔액 갱신 실패는 무시 (다음 화면 진입 시 갱신됨)
+    }
+  }
+
+  const handleLoadRegenerateInfo = () => apiClient.getLetterRegenerateInfo(date)
+
+  const handleRegenerateLetter = async (letterId: number) => {
+    const newLetter = (await apiClient.regenerateLetter(
+      date,
+      letterId
+    )) as LetterDetailResponse
+
+    setLetter(newLetter)
+    await refreshPearlBalance()
+    router.push(`/letter-detail/${newLetter.id}`)
   }
 
   const handleUpdateDiary = async (data: {
@@ -260,6 +284,12 @@ export default function DiaryDetailPage() {
         diaryType === "free" ? handleGenerateLetterForDiary : undefined
       }
       letterGenerating={letterGenerating}
+      onLoadRegenerateInfo={
+        diaryType === "free" ? handleLoadRegenerateInfo : undefined
+      }
+      onRegenerateLetter={
+        diaryType === "free" ? handleRegenerateLetter : undefined
+      }
     />
   )
 }
