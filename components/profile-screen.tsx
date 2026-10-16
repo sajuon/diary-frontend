@@ -34,6 +34,7 @@ const settingsItems: SettingsItem[] = [
   { label: "알림 설정", icon: "🔔" },
   { label: "계정 관리", icon: "👤" },
   { label: "구독 관리", icon: "💎" },
+  { label: "사용법 다시 보기", icon: "📖" },
   { label: "로그아웃", icon: "🚪", danger: true },
 ]
 
@@ -157,6 +158,11 @@ export default function ProfileScreen({
 
     if (label === "구독 관리") {
       onNavigate("subscription")
+      return
+    }
+
+    if (label === "사용법 다시 보기") {
+      onNavigate("intro?mode=manual")
       return
     }
 

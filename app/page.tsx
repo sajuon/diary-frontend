@@ -9,6 +9,7 @@ import {
   getStoredAccessToken,
   storeTokens,
 } from "@/lib/auth-storage"
+import { postAuthPath, shouldAutoShowOnboarding } from "@/lib/onboarding"
 
 export default function App() {
   const router = useRouter()
@@ -16,13 +17,19 @@ export default function App() {
 
   useEffect(() => {
     const bootstrap = async () => {
+      // 첫 사용자 소개: 아직 완료·건너뛰기 전이면 먼저 보여준다 (로그인 여부와 무관)
+      if (shouldAutoShowOnboarding()) {
+        router.replace("/intro")
+        return
+      }
+
       try {
         const token = getStoredAccessToken()
 
         if (token) {
           try {
             await apiClient.getMe()
-            router.replace("/home")
+            router.replace(postAuthPath())
             return
           } catch {
             // 아래 refresh 시도로 진행
@@ -38,7 +45,7 @@ export default function App() {
             true
           )
           await apiClient.getMe()
-          router.replace("/home")
+          router.replace(postAuthPath())
           return
         }
 
