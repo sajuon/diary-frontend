@@ -72,6 +72,29 @@ export function storeTokens(
   if (refreshToken) storeRefreshToken(refreshToken, rememberMe)
 }
 
+/**
+ * 저장된 액세스 토큰(JWT)에서 user_id를 꺼낸다.
+ * 서명 검증은 하지 않으므로 인증 용도로 쓰면 안 된다.
+ * 일기 임시저장 키처럼 "이 기기에서 누구의 글인지" 구분하는 용도로만 쓴다.
+ * (사용자 정보 조회(getMe)가 실패해도 임시저장이 동작하게 하려는 것)
+ */
+export function getUserIdFromStoredToken(): string | null {
+  const token = getStoredAccessToken()
+  if (!token) return null
+
+  try {
+    const payload = token.split(".")[1]
+    if (!payload) return null
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/")
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4)
+    const data = JSON.parse(atob(padded)) as { user_id?: unknown }
+    if (data.user_id == null) return null
+    return String(data.user_id)
+  } catch {
+    return null
+  }
+}
+
 export function clearAccessToken() {
   if (!isBrowser()) return
   localStorage.removeItem(ACCESS_TOKEN_KEY)
