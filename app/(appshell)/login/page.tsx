@@ -21,7 +21,7 @@ export default function LoginPage() {
     // TWA는 시작 URL이 /login이라 루트(page.tsx)의 인증 체크를 거치지 않는다.
     // 그래서 여기서도 동일하게 세션 복구를 시도한다.
     const bootstrap = async () => {
-      // 첫 사용자 소개: TWA는 /login으로 시작하므로 여기서도 판정한다
+      // 회원가입 직후 소개를 보다가 앱을 껐으면 이어서 보여준다 (TWA는 /login으로 시작)
       if (shouldAutoShowOnboarding()) {
         router.replace("/intro")
         return

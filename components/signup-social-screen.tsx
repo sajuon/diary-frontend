@@ -11,7 +11,7 @@ import {
   storeTokens,
 } from "@/lib/auth-storage"
 import { createOAuthState } from "@/lib/oauth-state"
-import { postAuthPath } from "@/lib/onboarding"
+import { markOnboardingForNewUser, postAuthPath } from "@/lib/onboarding"
 
 type Provider = "kakao" | "google"
 
@@ -180,7 +180,8 @@ export default function SignupSocialScreen() {
           })
 
           clearSignupDraft()
-          // 소개에서 '첫 일기 쓰기'로 들어왔으면 일기 화면으로 이어간다
+          // 회원가입을 마쳤으니 첫 사용자 소개를 보여준다
+          markOnboardingForNewUser("signup")
           window.location.replace(postAuthPath())
         } catch (error: any) {
           console.error("OAuth signup error:", error)

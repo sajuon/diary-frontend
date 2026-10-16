@@ -30,7 +30,6 @@ export default function ReviewerLoginPage() {
       storeTokens(result.access_token, result.refresh_token, true)
       clearSignupDraft()
 
-      // 소개에서 '첫 일기 쓰기'로 들어왔으면 일기 화면으로 이어간다
       window.location.replace(postAuthPath())
     } catch (error) {
       if (error instanceof ApiError) {

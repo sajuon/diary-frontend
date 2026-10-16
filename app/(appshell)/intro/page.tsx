@@ -14,7 +14,6 @@ import {
   markOnboardingCompleted,
   markOnboardingSkipped,
   saveOnboardingStep,
-  storePostAuthDest,
 } from "@/lib/onboarding"
 import {
   getStoredAccessToken,
@@ -62,13 +61,8 @@ export default function IntroPage() {
     const loggedIn = hasStoredSession()
 
     if (action === "first-diary") {
-      if (loggedIn) {
-        router.replace("/diary")
-      } else {
-        // 로그인·회원가입을 마치면 일기 화면으로 이어간다
-        storePostAuthDest("/diary")
-        router.replace("/login")
-      }
+      // 회원가입 직후에 보여주므로 보통 로그인 상태. 아니면 로그인부터
+      router.replace(loggedIn ? "/diary" : "/login")
       return
     }
 
