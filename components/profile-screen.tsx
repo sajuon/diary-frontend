@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import { apiClient } from "@/lib/api"
+import { countDrafts, pruneOldDrafts } from "@/lib/diary-draft"
 
 interface ProfileScreenProps {
   onNavigate: (screen: string, params?: Record<string, unknown>) => void
@@ -65,6 +66,8 @@ export default function ProfileScreen({
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [logoutLoading, setLogoutLoading] = useState(false)
+  // 로그아웃하면 지워지는 임시저장 일기 개수 (0보다 크면 확인 창을 띄운다)
+  const [logoutDraftCount, setLogoutDraftCount] = useState(0)
 
   useEffect(() => {
     async function fetchUser() {
@@ -158,6 +161,13 @@ export default function ProfileScreen({
     }
 
     if (label === "로그아웃") {
+      // 아직 제출하지 않은 임시저장 일기가 있으면 지워진다는 걸 먼저 알려준다
+      pruneOldDrafts()
+      const drafts = countDrafts()
+      if (drafts > 0) {
+        setLogoutDraftCount(drafts)
+        return
+      }
       await handleLogout()
     }
   }
@@ -495,6 +505,53 @@ export default function ProfileScreen({
           >
             설정
           </p>
+
+          {logoutDraftCount > 0 && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center px-6"
+              style={{ background: "rgba(61,53,48,0.4)" }}
+              onClick={() => setLogoutDraftCount(0)}
+            >
+              <div
+                className="bg-[#FFFCF8] rounded-2xl p-6 w-full max-w-xs shadow-xl flex flex-col gap-3"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-base font-bold" style={{ color: "#3D3530" }}>
+                  임시저장된 일기가 있어요
+                </h3>
+                <p className="text-sm" style={{ color: "#9A8F87" }}>
+                  아직 저장하지 않은 일기 {logoutDraftCount}개가 이 기기에
+                  임시저장돼 있어요. 로그아웃하면 임시저장된 글이 모두 지워져요.
+                </p>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setLogoutDraftCount(0)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-extrabold transition-all active:scale-95"
+                    style={{ background: "#C9856A", color: "#FFFCF8" }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    disabled={logoutLoading}
+                    onClick={async () => {
+                      setLogoutDraftCount(0)
+                      await handleLogout()
+                    }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+                    style={{
+                      background: "#FFFCF8",
+                      color: "#C95050",
+                      border: "1.5px solid #E5DDD5",
+                    }}
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {settingsItems.map((item, idx) => (
             <div key={item.label}>

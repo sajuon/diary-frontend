@@ -19,6 +19,7 @@ import {
   pruneOldDrafts,
   type DiaryDraft,
 } from "@/lib/diary-draft"
+import { getUserIdFromStoredToken } from "@/lib/auth-storage"
 import {
   EmotionStonePicker,
   isEmotionKey,
@@ -57,6 +58,8 @@ type ServerBase = {
   content: string
   weather: string
   mood: string
+  // 서버에서 일기를 못 불러온 경우(오프라인·인증 실패 등). 이때도 임시저장은 한다
+  unknown?: boolean
 }
 
 type DraftStatus = "idle" | "pending" | "saved" | "error"
@@ -163,6 +166,8 @@ export default function DiaryScreen({
     draft: DiaryDraft
     conflict: boolean
   } | null>(null)
+  // 복구 안내에서 '지우기'를 한 번 누르면 확인을 한 번 더 받는다
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   // key: `${날짜}:${탭}` → 서버 원본
   const baseRef = useRef<Record<string, ServerBase>>({})
@@ -211,13 +216,16 @@ export default function DiaryScreen({
       return
     }
 
+    // 서버 원본을 모르는 상태면, 기존 초안의 새 글/수정 구분을 그대로 이어받는다
+    const prevDraft = base.unknown ? loadDraft(uid, owner.date, owner.tab) : null
+
     const ok = saveDraft({
       userId: uid,
       entryDate: owner.date,
       diaryType: owner.tab,
-      mode: base.entryId ? "edit" : "new",
-      entryId: base.entryId,
-      baseUpdatedAt: base.updatedAt,
+      mode: prevDraft ? prevDraft.mode : base.entryId ? "edit" : "new",
+      entryId: prevDraft ? prevDraft.entryId : base.entryId,
+      baseUpdatedAt: prevDraft ? prevDraft.baseUpdatedAt : base.updatedAt,
       content: t,
       weather,
       mood,
@@ -233,6 +241,11 @@ export default function DiaryScreen({
   useEffect(() => {
     pruneOldDrafts()
 
+    // 1) 저장된 토큰에서 바로 꺼낸다 → 네트워크·인증 조회가 실패해도 임시저장이 동작
+    const fromToken = getUserIdFromStoredToken()
+    if (fromToken) setUserId(fromToken)
+
+    // 2) 서버 값으로 확인 (토큰에서 못 꺼낸 경우 대비)
     let cancelled = false
     apiClient
       .getMe()
@@ -240,7 +253,7 @@ export default function DiaryScreen({
         if (!cancelled && me?.id != null) setUserId(String(me.id))
       })
       .catch(() => {
-        // 사용자 정보를 못 받으면 임시저장 없이 기존처럼 동작
+        // 토큰에서 꺼낸 ID로 계속 임시저장
       })
 
     return () => {
@@ -334,6 +347,7 @@ export default function DiaryScreen({
       base.entryId != null &&
       (draft.mode === "new" || draft.baseUpdatedAt !== base.updatedAt)
 
+    setConfirmDiscard(false)
     setPendingDraft({ draft, conflict })
   }, [userId, fetching, activeTab, selectedDate])
 
@@ -346,6 +360,7 @@ export default function DiaryScreen({
       isWeatherKey(draft.weather) ? draft.weather : FALLBACK_WEATHER
     )
     setSelectedMood(isEmotionKey(draft.mood) ? draft.mood : FALLBACK_EMOTION)
+    setConfirmDiscard(false)
     setPendingDraft(null)
     setDraftStatus("saved")
   }
@@ -354,6 +369,7 @@ export default function DiaryScreen({
     if (!pendingDraft) return
     const { draft } = pendingDraft
     removeDraft(draft.userId, draft.entryDate, draft.diaryType)
+    setConfirmDiscard(false)
     setPendingDraft(null)
     setDraftStatus("idle")
   }
@@ -368,6 +384,7 @@ export default function DiaryScreen({
       draftCheckedRef.current.delete(`${selectedDate}:${activeTab}`)
     }
     formOwnerRef.current = null
+    setConfirmDiscard(false)
     setPendingDraft(null)
     setDraftStatus("idle")
 
@@ -406,7 +423,11 @@ export default function DiaryScreen({
     let cancelled = false
 
     // 이 탭에서 입력하던 내용이 있으면 서버에서 다시 불러오지 않고 그대로 복원
-    const kept = tabFormsRef.current[`${selectedDate}:${activeTab}`]
+    // (지난번에 불러오기를 실패했던 탭은 다시 불러온다. 입력 내용은 임시저장에서 복구)
+    const formId = `${selectedDate}:${activeTab}`
+    const kept = baseRef.current[formId]?.unknown
+      ? undefined
+      : tabFormsRef.current[formId]
     if (kept) {
       setText(kept.text)
       setSelectedWeather(kept.weather)
@@ -445,7 +466,12 @@ export default function DiaryScreen({
         const savedMood = data.mood_tags?.[0]
         const loadedMood = isEmotionKey(savedMood) ? savedMood : FALLBACK_EMOTION
 
-        baseRef.current[`${selectedDate}:${activeTab}`] = {
+        // 지난번에 불러오기를 실패했던 탭이면, 서버 원본 기준으로 초안 복구 안내를 다시 한다
+        if (baseRef.current[formId]?.unknown) {
+          draftCheckedRef.current.delete(formId)
+        }
+
+        baseRef.current[formId] = {
           entryId: data.id ?? null,
           updatedAt: data.updated_at ?? null,
           content: data.content || "",
@@ -472,7 +498,10 @@ export default function DiaryScreen({
           message.includes("일기가 없습니다") ||
           message.includes("HTTP 404")
         ) {
-          baseRef.current[`${selectedDate}:${activeTab}`] = {
+          if (baseRef.current[formId]?.unknown) {
+            draftCheckedRef.current.delete(formId)
+          }
+          baseRef.current[formId] = {
             entryId: null,
             updatedAt: null,
             content: "",
@@ -485,6 +514,19 @@ export default function DiaryScreen({
         }
 
         setError(message || `${typeLabel} 일기를 불러오지 못했어요.`)
+
+        // 불러오기에 실패해도(오프라인·인증 실패 등) 쓰는 글은 기기에 임시저장되게 한다.
+        // 다른 탭의 내용이 남아 이 탭 초안으로 저장되지 않게 입력칸은 비운다.
+        baseRef.current[formId] = {
+          entryId: null,
+          updatedAt: null,
+          content: "",
+          weather: FALLBACK_WEATHER,
+          mood: FALLBACK_EMOTION,
+          unknown: true,
+        }
+        formOwnerRef.current = { date: selectedDate, tab: activeTab }
+        resetForm()
       } finally {
         if (!cancelled) setFetching(false)
       }
@@ -777,6 +819,35 @@ export default function DiaryScreen({
                 내용을 덮어써요.
               </p>
             )}
+            {confirmDiscard ? (
+              <>
+                <p className="text-xs mt-3 font-bold" style={{ color: "#C95050" }}>
+                  임시저장된 글을 지울까요? 지운 글은 되돌릴 수 없어요.
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDiscard(false)}
+                    className="flex-1 py-2 rounded-xl text-sm font-extrabold transition-all active:scale-95"
+                    style={{ background: "#C9856A", color: "#FFFCF8" }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={discardDraft}
+                    className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
+                    style={{
+                      background: "#FFFCF8",
+                      color: "#C95050",
+                      border: "1.5px solid #E5DDD5",
+                    }}
+                  >
+                    지우기
+                  </button>
+                </div>
+              </>
+            ) : (
             <div className="flex gap-2 mt-3">
               <button
                 type="button"
@@ -788,7 +859,7 @@ export default function DiaryScreen({
               </button>
               <button
                 type="button"
-                onClick={discardDraft}
+                onClick={() => setConfirmDiscard(true)}
                 className="flex-1 py-2 rounded-xl text-sm font-bold transition-all active:scale-95"
                 style={{
                   background: "#FFFCF8",
@@ -799,6 +870,7 @@ export default function DiaryScreen({
                 지우기
               </button>
             </div>
+            )}
           </div>
         )}
 

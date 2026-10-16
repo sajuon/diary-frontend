@@ -103,10 +103,15 @@ export default function HaedoriPage() {
         setThemeKey(room.theme_key)
         writeCachedThemeKey(room.theme_key)
         setOwnedItemKeys(room.owned_room_item_keys ?? [])
-        setPlacements(room.placements ?? [])
+        // 서버 값도 편집 화면과 같은 범위(위치·배율)로 맞춰서 쓴다
+        const loaded = (room.placements ?? []).map((p) => {
+          const item = ROOM_ITEMS[p.item_key]
+          return item ? clampPlacement(item, p) : p
+        })
+        setPlacements(loaded)
         // 상점에서 '배치하기'로 들어온 경우 바로 꾸미기 모드
         if (new URLSearchParams(window.location.search).get("decorate")) {
-          setDraft(room.placements ?? [])
+          setDraft(loaded)
           setEditing(true)
         }
       })

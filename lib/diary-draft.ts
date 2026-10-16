@@ -100,6 +100,23 @@ export function removeDraft(
   }
 }
 
+// 이 기기에 남아 있는 일기 초안 개수 (로그아웃 전 안내용)
+export function countDrafts(): number {
+  const s = storage()
+  if (!s) return 0
+
+  try {
+    let count = 0
+    for (let i = 0; i < s.length; i++) {
+      const key = s.key(i)
+      if (key && key.startsWith(PREFIX)) count++
+    }
+    return count
+  } catch {
+    return 0
+  }
+}
+
 // 로그아웃 시 이 기기에 남은 모든 일기 초안 삭제
 export function clearAllDrafts() {
   const s = storage()
