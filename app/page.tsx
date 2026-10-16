@@ -17,7 +17,7 @@ export default function App() {
 
   useEffect(() => {
     const bootstrap = async () => {
-      // 첫 사용자 소개: 아직 완료·건너뛰기 전이면 먼저 보여준다 (로그인 여부와 무관)
+      // 회원가입 직후 소개를 보다가 앱을 껐으면 이어서 보여준다
       if (shouldAutoShowOnboarding()) {
         router.replace("/intro")
         return

@@ -1,5 +1,6 @@
 // /home/dori/diary-frontend/lib/onboarding.ts
 // 역할: 첫 사용자 소개(온보딩) 진행 상태를 기기(localStorage)에 저장
+// - 회원가입을 마친 신규 사용자에게만 자동으로 보여준다 (기존 사용자·재로그인은 안 띄움)
 // - 일기 초안과 분리된 키를 쓴다 → 로그아웃해도 유지, 초안 삭제와 무관
 // - 이름·생년월일·일기 내용 같은 개인정보는 저장하지 않는다
 // - 저장이 실패해도 앱 진입을 막지 않고, 이번 실행에서는 다시 띄우지 않는다
@@ -30,11 +31,9 @@ const STATE_KEY = "haedori_onboarding"
 const SHOWN_THIS_RUN_KEY = "haedori_onboarding_shown"
 let shownThisRun = false
 
-// 로그인을 거친 뒤 이어갈 목적지 (허용된 내부 경로만)
-const POST_AUTH_KEY = "haedori_post_auth_dest"
-const POST_AUTH_MAX_AGE_MS = 24 * 60 * 60 * 1000
-const ALLOWED_POST_AUTH_DESTS = ["/diary"] as const
-export type PostAuthDest = (typeof ALLOWED_POST_AUTH_DESTS)[number]
+// 이 시간 안에 만들어진 계정이면 신규 가입으로 본다
+// (로그인 화면의 카카오·구글 로그인도 처음이면 계정을 새로 만든다)
+const NEW_ACCOUNT_WINDOW_MS = 10 * 60 * 1000
 
 function local(): Storage | null {
   try {
@@ -71,15 +70,16 @@ function clampStep(step: number) {
   return Math.min(ONBOARDING_TOTAL_STEPS, Math.max(1, Math.round(step)))
 }
 
-export function readOnboarding(): OnboardingState {
+/** 저장된 상태. 저장된 적이 없으면 null (= 신규 가입 표시가 없음 → 자동 노출 안 함) */
+function readStored(): OnboardingState | null {
   const s = local()
-  if (!s) return defaultState()
+  if (!s) return null
 
   try {
     const raw = s.getItem(STATE_KEY)
-    if (!raw) return defaultState()
+    if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<OnboardingState>
-    if (parsed?.flow_id !== ONBOARDING_FLOW_ID) return defaultState()
+    if (parsed?.flow_id !== ONBOARDING_FLOW_ID) return null
 
     const status: OnboardingStatus =
       parsed.status === "in_progress" ||
@@ -95,8 +95,12 @@ export function readOnboarding(): OnboardingState {
       last_step: clampStep(Number(parsed.last_step ?? 1)),
     }
   } catch {
-    return defaultState()
+    return null
   }
+}
+
+export function readOnboarding(): OnboardingState {
+  return readStored() ?? defaultState()
 }
 
 function writeOnboarding(state: OnboardingState): boolean {
@@ -130,12 +134,40 @@ function wasShownThisRun() {
   }
 }
 
-/** 앱 진입 시 소개를 자동으로 보여줄지 */
+/**
+ * 소개를 자동으로 보여줄지.
+ * 회원가입 직후 markOnboardingForNewUser()로 표시된 경우에만 true.
+ * 보다가 앱을 껐으면 다음 진입 때 이어서 보여준다.
+ */
 export function shouldAutoShowOnboarding(): boolean {
   if (typeof window === "undefined") return false
   if (wasShownThisRun()) return false
-  const { status } = readOnboarding()
-  return status === "not_started" || status === "in_progress"
+  const stored = readStored()
+  if (!stored) return false
+  return stored.status === "not_started" || stored.status === "in_progress"
+}
+
+/**
+ * 신규 사용자 표시 → 다음 이동에서 소개를 보여준다
+ * - signup: 회원가입 화면을 마친 경우. 같은 기기에서 다른 사람이 이미 봤어도 새 사용자니까 다시 보여준다
+ * - login: 로그인 화면의 소셜 로그인으로 계정이 막 생긴 경우. 이 기기에 기록이 없을 때만
+ *   (가입 직후 로그아웃→재로그인으로 다시 뜨는 것 방지)
+ */
+export function markOnboardingForNewUser(source: "signup" | "login") {
+  const stored = readStored()
+  if (stored?.status === "in_progress") return
+  if (source === "login" && stored) return
+  writeOnboarding(defaultState())
+}
+
+/** 계정 생성 시각이 방금이면 신규 가입으로 본다 */
+export function isNewlyCreatedAccount(createdAt: unknown): boolean {
+  if (typeof createdAt !== "string" || !createdAt) return false
+  // 서버가 시간대 없이 내려주면 UTC로 본다
+  const hasZone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(createdAt)
+  const time = Date.parse(hasZone ? createdAt : `${createdAt}Z`)
+  if (!Number.isFinite(time)) return false
+  return Math.abs(Date.now() - time) <= NEW_ACCOUNT_WINDOW_MS
 }
 
 /** 자동 노출을 시작할 단계 (진행 중이었으면 그 단계부터) */
@@ -185,37 +217,9 @@ export function markOnboardingSkipped() {
   return ok
 }
 
-// ---------- 로그인 후 이어갈 목적지 ----------
+// ---------- 로그인·회원가입 후 이동 ----------
 
-export function storePostAuthDest(dest: PostAuthDest) {
-  if (!ALLOWED_POST_AUTH_DESTS.includes(dest)) return
-  try {
-    local()?.setItem(POST_AUTH_KEY, JSON.stringify({ dest, at: Date.now() }))
-  } catch {
-    // 저장 못 하면 홈으로 간다 (홈에서 작성 버튼 사용)
-  }
-}
-
-/** 저장된 목적지를 꺼내고 지운다. 없거나 허용되지 않은 값이면 null */
-export function consumePostAuthDest(): PostAuthDest | null {
-  const s = local()
-  if (!s) return null
-
-  try {
-    const raw = s.getItem(POST_AUTH_KEY)
-    if (!raw) return null
-    s.removeItem(POST_AUTH_KEY)
-
-    const parsed = JSON.parse(raw) as { dest?: string; at?: number }
-    if (Date.now() - Number(parsed.at || 0) > POST_AUTH_MAX_AGE_MS) return null
-    const dest = ALLOWED_POST_AUTH_DESTS.find((d) => d === parsed.dest)
-    return dest ?? null
-  } catch {
-    return null
-  }
-}
-
-/** 로그인 성공 후 이동할 경로 */
+/** 로그인·회원가입 성공 후 이동할 경로 (신규 가입이면 소개부터) */
 export function postAuthPath(): string {
-  return consumePostAuthDest() ?? "/home"
+  return shouldAutoShowOnboarding() ? "/intro" : "/home"
 }
