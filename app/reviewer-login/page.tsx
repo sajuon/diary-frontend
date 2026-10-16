@@ -4,6 +4,7 @@
 import { useState } from "react"
 import { apiClient, ApiError } from "@/lib/api"
 import { storeTokens, clearSignupDraft } from "@/lib/auth-storage"
+import { postAuthPath } from "@/lib/onboarding"
 
 export default function ReviewerLoginPage() {
   const [email, setEmail] = useState("")
@@ -29,7 +30,8 @@ export default function ReviewerLoginPage() {
       storeTokens(result.access_token, result.refresh_token, true)
       clearSignupDraft()
 
-      window.location.replace("/home")
+      // 소개에서 '첫 일기 쓰기'로 들어왔으면 일기 화면으로 이어간다
+      window.location.replace(postAuthPath())
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(error.message)

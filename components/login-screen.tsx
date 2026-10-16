@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation"
 import { apiClient } from "@/lib/api"
 import { clearSignupDraft, storeTokens } from "@/lib/auth-storage"
 import { createOAuthState, parseOAuthState } from "@/lib/oauth-state"
+import { postAuthPath } from "@/lib/onboarding"
 
 type Provider = "kakao" | "google"
 
@@ -178,7 +179,8 @@ export default function LoginScreen() {
           clearSignupDraft()
 
           console.log("[login] token stored, moving to /home")
-          window.location.replace("/home")
+          // 소개에서 '첫 일기 쓰기'로 들어왔으면 일기 화면으로 이어간다
+          window.location.replace(postAuthPath())
         } catch (error: any) {
           console.error("[login] OAuth login error:", error)
           alert(error?.message || "로그인 처리 중 오류가 발생했어.")
