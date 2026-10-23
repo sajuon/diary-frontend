@@ -135,7 +135,14 @@ export default function DiaryScreen({
     return searchParams.get("diary_type") === "free" ? "free" : "question"
   }, [searchParams])
 
-  const isToday = selectedDate === getTodayDateString()
+  // 화면을 연 시점 기준으로 고정한다.
+  // 매 렌더마다 계산하면 작성 중 자정을 넘길 때 false로 바뀌어 일기를 다시 불러오고
+  // 입력 중인 내용을 덮어쓴다(새 글이면 빈칸 + 초안 삭제).
+  // 자정을 넘겨 저장해도 서버는 payload의 entry_date(연 날짜) 기준으로 처리한다.
+  const isToday = useMemo(
+    () => selectedDate === getTodayDateString(),
+    [selectedDate]
+  )
 
   const [activeTab, setActiveTab] = useState<DiaryType>(initialDiaryType)
   const [isEdit, setIsEdit] = useState(false)
@@ -176,6 +183,8 @@ export default function DiaryScreen({
   // 복구 안내를 이미 확인한 날짜·탭
   const draftCheckedRef = useRef<Set<string>>(new Set())
   const submittedRef = useRef(false)
+  // 저장 버튼 연타로 요청이 두 번 나가지 않게 (state 반영 전 두 번째 클릭 차단)
+  const savingRef = useRef(false)
 
   // 언마운트·백그라운드 전환 시점에 최신 값을 읽기 위한 ref
   const latestRef = useRef({
@@ -566,7 +575,17 @@ export default function DiaryScreen({
     question,
   ])
 
+  // 정식 저장 성공 처리 (초안 정리 + 달력으로 이동)
+  const finishSaved = (entryDate: string) => {
+    if (userId) removeDraft(userId, selectedDate, activeTab)
+    submittedRef.current = true
+    invalidateDiaryMonth(getDiaryMonthKeyFromDate(entryDate))
+    onNavigate("calendar")
+  }
+
   async function handleSaveDiary() {
+    if (savingRef.current) return
+    savingRef.current = true
     setLoading(true)
     setError(null)
 
@@ -597,17 +616,46 @@ export default function DiaryScreen({
       }
 
       // 정식 저장 성공 → 이 날짜·탭의 임시저장 삭제, 화면을 떠날 때 다시 저장하지 않게 표시
-      if (userId) removeDraft(userId, selectedDate, activeTab)
-      submittedRef.current = true
-
-      const entryDate: string = saved?.entry_date || selectedDate
-      const monthKey = getDiaryMonthKeyFromDate(entryDate)
-      invalidateDiaryMonth(monthKey)
-
-      onNavigate("calendar")
+      finishSaved(saved?.entry_date || selectedDate)
     } catch (e: any) {
+      // 새 글 저장인데 서버에 이미 같은 날짜·종류 일기가 있는 경우
+      // (불러오기 실패 상태에서 작성 / 저장 응답이 늦게 와서 다시 누름 / 다른 기기에서 작성)
+      if (!isEdit && e?.status === 409) {
+        try {
+          const server = (await apiClient.getDiaryByDate(
+            selectedDate,
+            activeTab
+          )) as DiarySaveResponse
+          const formId = `${selectedDate}:${activeTab}`
+
+          if ((server.content || "") === text) {
+            // 같은 내용이 이미 저장돼 있음 → 저장 성공으로 처리
+            finishSaved(server.entry_date || selectedDate)
+            return
+          }
+
+          // 다른 내용이 저장돼 있음 → 수정 모드로 바꾸고 사용자가 다시 누르면 덮어쓴다
+          baseRef.current[formId] = {
+            entryId: server.id ?? null,
+            updatedAt: server.updated_at ?? null,
+            content: server.content || "",
+            weather: isWeatherKey(server.weather) ? server.weather : FALLBACK_WEATHER,
+            mood: isEmotionKey(server.mood_tags?.[0])
+              ? (server.mood_tags?.[0] as EmotionKey)
+              : FALLBACK_EMOTION,
+          }
+          setIsEdit(true)
+          setError(
+            `이미 저장된 ${typeLabel} 일기가 있어요. 한 번 더 누르면 지금 쓴 내용으로 수정돼요.`
+          )
+          return
+        } catch {
+          // 확인 실패 시 아래 기본 오류 표시
+        }
+      }
       setError(e?.message || (isEdit ? "수정 실패" : "저장 실패"))
     } finally {
+      savingRef.current = false
       setLoading(false)
     }
   }
