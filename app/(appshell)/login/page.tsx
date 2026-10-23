@@ -11,7 +11,7 @@ import {
   storeTokens,
 } from "@/lib/auth-storage"
 import LoginScreen from "@/components/login-screen"
-import { postAuthPath, shouldAutoShowOnboarding } from "@/lib/onboarding"
+import { postAuthPath, setOnboardingUser } from "@/lib/onboarding"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -21,11 +21,7 @@ export default function LoginPage() {
     // TWA는 시작 URL이 /login이라 루트(page.tsx)의 인증 체크를 거치지 않는다.
     // 그래서 여기서도 동일하게 세션 복구를 시도한다.
     const bootstrap = async () => {
-      // 회원가입 직후 소개를 보다가 앱을 껐으면 이어서 보여준다 (TWA는 /login으로 시작)
-      if (shouldAutoShowOnboarding()) {
-        router.replace("/intro")
-        return
-      }
+      // 소개를 보다가 앱을 껐으면 세션 확인 후 postAuthPath()가 이어서 보여준다
 
       try {
         const accessToken = getStoredAccessToken()
@@ -39,7 +35,7 @@ export default function LoginPage() {
 
         if (accessToken) {
           try {
-            await apiClient.getMe()
+            setOnboardingUser(await apiClient.getMe())
             router.replace(postAuthPath())
             return
           } catch {
@@ -55,7 +51,7 @@ export default function LoginPage() {
             refreshResult.refresh_token,
             true
           )
-          await apiClient.getMe()
+          setOnboardingUser(await apiClient.getMe())
           router.replace(postAuthPath())
           return
         }
@@ -83,4 +79,4 @@ export default function LoginPage() {
   }
 
   return <LoginScreen />
-}
+}

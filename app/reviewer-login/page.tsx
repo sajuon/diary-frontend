@@ -4,7 +4,7 @@
 import { useState } from "react"
 import { apiClient, ApiError } from "@/lib/api"
 import { storeTokens, clearSignupDraft } from "@/lib/auth-storage"
-import { postAuthPath } from "@/lib/onboarding"
+import { postAuthPath, setOnboardingUser } from "@/lib/onboarding"
 
 export default function ReviewerLoginPage() {
   const [email, setEmail] = useState("")
@@ -29,6 +29,13 @@ export default function ReviewerLoginPage() {
 
       storeTokens(result.access_token, result.refresh_token, true)
       clearSignupDraft()
+
+      // 온보딩 상태를 이 계정 기준으로 (이전 계정 상태와 섞이지 않게)
+      try {
+        setOnboardingUser(await apiClient.getMe())
+      } catch {
+        setOnboardingUser(null)
+      }
 
       window.location.replace(postAuthPath())
     } catch (error) {

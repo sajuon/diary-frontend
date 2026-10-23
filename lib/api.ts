@@ -9,6 +9,7 @@ import {
   storeRefreshToken,
 } from "@/lib/auth-storage"
 import { clearAllDrafts } from "@/lib/diary-draft"
+import { clearOnboardingUser } from "@/lib/onboarding"
 import type { PearlReward } from "@/lib/pearl-events"
 
 export type { PearlReward }
@@ -103,6 +104,8 @@ export type AuthTokenResponse = {
   access_token: string
   refresh_token?: string | null
   token_type?: string
+  /** 이번 요청으로 계정이 새로 만들어졌으면 true (소셜 로그인·회원가입) */
+  is_new_user?: boolean
 }
 
 type BirthProfilePayload = {
@@ -411,6 +414,8 @@ class ApiClient {
       clearAccessToken()
       // 공용 기기에서 다음 사용자에게 일기 초안이 남지 않게
       clearAllDrafts()
+      // 온보딩 현재 계정 지정 해제 (계정별 진행 상태는 유지)
+      clearOnboardingUser()
     }
   }
 

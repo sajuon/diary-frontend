@@ -9,7 +9,7 @@ import {
   getStoredAccessToken,
   storeTokens,
 } from "@/lib/auth-storage"
-import { postAuthPath, shouldAutoShowOnboarding } from "@/lib/onboarding"
+import { postAuthPath, setOnboardingUser } from "@/lib/onboarding"
 
 export default function App() {
   const router = useRouter()
@@ -17,18 +17,14 @@ export default function App() {
 
   useEffect(() => {
     const bootstrap = async () => {
-      // 회원가입 직후 소개를 보다가 앱을 껐으면 이어서 보여준다
-      if (shouldAutoShowOnboarding()) {
-        router.replace("/intro")
-        return
-      }
+      // 소개를 보다가 앱을 껐으면 세션 확인 후 postAuthPath()가 이어서 보여준다
 
       try {
         const token = getStoredAccessToken()
 
         if (token) {
           try {
-            await apiClient.getMe()
+            setOnboardingUser(await apiClient.getMe())
             router.replace(postAuthPath())
             return
           } catch {
@@ -44,7 +40,7 @@ export default function App() {
             refreshResult.refresh_token,
             true
           )
-          await apiClient.getMe()
+          setOnboardingUser(await apiClient.getMe())
           router.replace(postAuthPath())
           return
         }
@@ -74,4 +70,4 @@ export default function App() {
   }
 
   return null
-}
+}

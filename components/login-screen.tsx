@@ -9,8 +9,9 @@ import { apiClient } from "@/lib/api"
 import { clearSignupDraft, storeTokens } from "@/lib/auth-storage"
 import { createOAuthState, parseOAuthState } from "@/lib/oauth-state"
 import {
-  isNewlyCreatedAccount,
+  isNewUserLogin,
   markOnboardingForNewUser,
+  setOnboardingUser,
   postAuthPath,
 } from "@/lib/onboarding"
 
@@ -183,12 +184,14 @@ export default function LoginScreen() {
           clearSignupDraft()
 
           // 로그인 화면의 소셜 로그인도 처음이면 계정이 새로 만들어진다
-          // → 방금 만든 계정이면 첫 사용자 소개를 보여준다
+          // → 이 계정이 방금 만들어졌으면 첫 사용자 소개를 보여준다
           try {
             const me: any = await apiClient.getMe()
-            if (isNewlyCreatedAccount(me?.created_at)) markOnboardingForNewUser("login")
+            setOnboardingUser(me)
+            if (isNewUserLogin(oauthResult, me)) markOnboardingForNewUser()
           } catch {
             // 확인 못 하면 소개 없이 진행
+            setOnboardingUser(null)
           }
 
           console.log("[login] token stored, moving on")
@@ -301,4 +304,4 @@ export default function LoginScreen() {
       </div>
     </div>
   )
-}
+}

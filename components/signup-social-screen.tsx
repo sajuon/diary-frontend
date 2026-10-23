@@ -11,7 +11,12 @@ import {
   storeTokens,
 } from "@/lib/auth-storage"
 import { createOAuthState } from "@/lib/oauth-state"
-import { markOnboardingForNewUser, postAuthPath } from "@/lib/onboarding"
+import {
+  isNewUserLogin,
+  markOnboardingForNewUser,
+  postAuthPath,
+  setOnboardingUser,
+} from "@/lib/onboarding"
 
 type Provider = "kakao" | "google"
 
@@ -163,8 +168,9 @@ export default function SignupSocialScreen() {
 
           storeTokens(oauthResult.access_token, oauthResult.refresh_token, true)
 
-          // 인증 직후 사용자 정보 확인
-          await apiClient.getMe()
+          // 인증 직후 사용자 정보 확인 + 온보딩 상태를 이 계정 기준으로
+          const me: any = await apiClient.getMe()
+          setOnboardingUser(me)
 
           // 출생 정보 저장
           await apiClient.updateBirthProfile({
@@ -180,8 +186,9 @@ export default function SignupSocialScreen() {
           })
 
           clearSignupDraft()
-          // 회원가입을 마쳤으니 첫 사용자 소개를 보여준다
-          markOnboardingForNewUser("signup")
+          // 회원가입으로 계정이 새로 만들어졌으면 첫 사용자 소개를 보여준다
+          // (이미 가입된 소셜 계정으로 가입 화면을 거친 경우는 제외)
+          if (isNewUserLogin(oauthResult, me)) markOnboardingForNewUser()
           window.location.replace(postAuthPath())
         } catch (error: any) {
           console.error("OAuth signup error:", error)
