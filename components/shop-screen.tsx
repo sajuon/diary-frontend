@@ -44,11 +44,25 @@ export default function ShopScreen({ onNavigate }: ShopScreenProps) {
     view: CookieResult | null
   } | null>(null)
 
-  useEffect(() => {
+  // 쿠키 정보 상태: 로딩 / 정상 / 조회 실패 를 구분해서 버튼 비활성 이유를 보여준다
+  const [cookieStatus, setCookieStatus] = useState<"loading" | "ready" | "error">("loading")
+
+  const loadCookieInfo = () => {
+    setCookieStatus("loading")
     apiClient
       .getFortuneCookieInfo()
-      .then(setCookieInfo)
-      .catch(() => setCookieInfo(null))
+      .then((info) => {
+        setCookieInfo(info)
+        setCookieStatus("ready")
+      })
+      .catch(() => {
+        setCookieInfo(null)
+        setCookieStatus("error")
+      })
+  }
+
+  useEffect(() => {
+    loadCookieInfo()
   }, [])
 
   const todayFree = cookieInfo?.today_free ?? null
@@ -126,6 +140,25 @@ export default function ShopScreen({ onNavigate }: ShopScreenProps) {
 
       <div className="px-5 mb-4">
         <div className="rounded-2xl px-4 py-3" style={{ background: "#F2C4A8" }}>
+          {cookieStatus === "error" && (
+            <div
+              className="flex items-center justify-between gap-3 pb-2 mb-1"
+              style={{ borderBottom: "1px dashed rgba(201,133,106,0.45)" }}
+              role="alert"
+            >
+              <p className="text-xs font-bold" style={{ color: "#A8644A" }}>
+                포춘쿠키 정보를 불러오지 못했어요.
+              </p>
+              <button
+                onClick={loadCookieInfo}
+                className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all active:scale-95"
+                style={{ background: "#FFFCF8", color: "#C9856A" }}
+                type="button"
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
           {(
             [
               {
@@ -156,13 +189,17 @@ export default function ShopScreen({ onNavigate }: ShopScreenProps) {
                     {row.title}
                   </p>
                   <p className="text-xs font-bold" style={{ color: "#A8644A" }}>
-                    {row.today ? `오늘 +${row.today.reward} 진주 받았어요` : row.sub}
+                    {row.today
+                      ? `오늘 +${row.today.reward} 진주 받았어요`
+                      : cookieStatus === "ready" && row.lacking
+                        ? `진주 ${FORTUNE_COOKIE_PRICE - localPearls}개가 더 필요해요`
+                        : row.sub}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => openCookie(row.kind)}
-                disabled={!cookieInfo || (!row.today && row.lacking)}
+                disabled={cookieStatus !== "ready" || (!row.today && row.lacking)}
                 className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-extrabold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={
                   row.today
@@ -171,7 +208,15 @@ export default function ShopScreen({ onNavigate }: ShopScreenProps) {
                 }
                 type="button"
               >
-                {row.today ? "쪽지 보기" : row.lacking ? "부족" : "열기"}
+                {cookieStatus === "loading"
+                  ? "확인 중"
+                  : cookieStatus === "error"
+                    ? "열기"
+                    : row.today
+                      ? "쪽지 보기"
+                      : row.lacking
+                        ? "진주 부족"
+                        : "열기"}
               </button>
             </div>
           ))}
